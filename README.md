@@ -4,9 +4,13 @@ Aplicativo Streamlit para geração de Relatórios de Acompanhamento de Débitos
 
 ## Funcionalidades
 
-- ✅ Geração de relatórios em PDF com tabelas formatadas
+- ✅ Geração de relatórios em PDF e Word com tabelas formatadas
 - ✅ Formulário interativo para preenchimento de dados
 - ✅ Suporte para débitos da Receita Federal, SEFAZ, Municípios e FGTS
+- ✅ **Interpretadores robustos de PDF** para pré-preencher campos automaticamente:
+  - Receita Federal: extrai CNPJ, nome da empresa, data de consulta e situação fiscal
+  - FGTS: extrai data de consulta, período de validade e situação
+  - SEFAZ: extrai CNPJ, data de consulta e débitos identificados (IPVA, ICMS, etc.)
 - ✅ Gerenciamento de parcelamentos
 - ✅ Pré-visualização do texto antes de gerar o PDF
 
@@ -24,7 +28,12 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-2. Preencha o formulário com os dados necessários:
+2. **(Opcional)** Carregue PDFs oficiais para pré-preencher campos automaticamente:
+   - Faça upload dos PDFs da Receita Federal, FGTS e/ou SEFAZ
+   - Clique em "📥 Ler PDFs e pré-preencher campos"
+   - Os campos serão preenchidos automaticamente quando possível
+
+3. Preencha o formulário com os dados necessários:
    - **Dados principais**: Data do relatório, período de referência
    - **Dados da empresa**: Requerente, CNPJ, Tributação, Certificado Digital
    - **Consultas realizadas**: Datas das consultas aos órgãos
@@ -36,9 +45,9 @@ streamlit run app.py
      - Parcelamentos (tabela - uma linha por parcelamento)
    - **Conclusão e responsável técnico**
 
-3. Clique em "Gerar relatório em PDF"
+4. Clique em "Gerar relatório"
 
-4. Baixe o PDF gerado
+5. Baixe o PDF ou Word gerado
 
 ## Formato das tabelas
 
@@ -75,7 +84,13 @@ SIMPLES NACIONAL     R$ 2.100,00     Último dia útil do mês     60     28
 ├── src/
 │   ├── core.py           # Lógica de negócio e processamento de dados
 │   ├── pdf_generator.py  # Geração de PDFs com tabelas formatadas
-│   └── templates.py      # Templates de texto
+│   ├── word_generator.py # Geração de documentos Word (.docx)
+│   ├── templates.py      # Templates de texto
+│   └── parsers/          # Interpretadores robustos de PDF
+│       ├── base.py       # Classe base ResultadoParsers
+│       ├── receita_federal.py  # Parser para PDFs da Receita Federal
+│       ├── fgts.py       # Parser para PDFs do FGTS
+│       └── sefaz.py      # Parser para PDFs da SEFAZ
 └── output/
     └── notas/            # PDFs gerados são salvos aqui
 ```
@@ -84,6 +99,9 @@ SIMPLES NACIONAL     R$ 2.100,00     Último dia útil do mês     60     28
 
 - `streamlit>=1.28.0` - Framework web para a interface
 - `reportlab>=4.0.0` - Geração de PDFs
+- `pdfplumber>=0.10.0` - Extração de texto e tabelas de PDFs
+- `python-docx>=1.1.0` - Geração de documentos Word
+- `Pillow>=10.0.0` - Processamento de imagens (papel timbrado)
 
 ## Notas
 

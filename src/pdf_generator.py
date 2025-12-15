@@ -1,19 +1,19 @@
 # src/pdf_generator.py
 """
-Geração de PDFs do relatório, com tabelas desenhadas (SEFAZ, Débitos Municipais,
-Parcelamentos).
+Geração de PDFs do relatório, com tabelas desenhadas.
+Suporta dados manuais e estruturados (IPVA, FGTS detalhado, etc.).
 
 Características:
-- Usa papel timbrado (imagem de fundo) da pasta assets/
-- Centraliza valores e textos em todas as tabelas
-- Mantém dimensões A4 padrão
+- Usa papel timbrado (assets/nota_explicativa_em_branco.png)
+- Centraliza valores e textos
+- Processa objetos complexos (sefaz_estadual, fgts)
 """
 
 from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -25,9 +25,23 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
-    PageBreak,  # <-- para forçar quebra de página
+    PageBreak,
 )
 from reportlab.pdfgen import canvas as rl_canvas
+
+
+# ==============================================================================
+# HELPERS DE FORMATAÇÃO
+# ==============================================================================
+def _fmt_moeda(valor) -> str:
+    """Formata float ou str numérico para R$ X.XXX,XX"""
+    if not valor:
+        return "-"
+    try:
+        val_float = float(valor)
+        return f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return str(valor)
 
 
 class PDFTemplate(SimpleDocTemplate):
@@ -44,28 +58,19 @@ class PDFTemplate(SimpleDocTemplate):
         onLaterPages=None,
         canvasmaker=rl_canvas.Canvas,
     ):
-        """Sobrescreve build para adicionar papel timbrado como fundo em todas as páginas."""
-
-        # Define funções que serão chamadas ao criar cada página
         def on_first_page(canvas, doc):
-            # Desenha o papel timbrado como fundo
             self._draw_letterhead(canvas, doc)
-            # Chama callback customizado se fornecido
             if onFirstPage:
                 onFirstPage(canvas, doc)
 
         def on_later_pages(canvas, doc):
-            # Desenha o papel timbrado como fundo em páginas subsequentes
             self._draw_letterhead(canvas, doc)
-            # Chama callback customizado se fornecido
             if onLaterPages:
                 onLaterPages(canvas, doc)
 
-        # Garantia extra: se alguém chamar com canvasmaker=None, corrige aqui
         if canvasmaker is None:
             canvasmaker = rl_canvas.Canvas
 
-        # Chama o build da classe pai com os callbacks customizados
         super().build(
             flowables,
             onFirstPage=on_first_page,
@@ -74,72 +79,45 @@ class PDFTemplate(SimpleDocTemplate):
         )
 
     def _draw_letterhead(self, canvas, doc):
-        """Desenha o papel timbrado como imagem de fundo."""
         if self.template_path and Path(self.template_path).exists():
             try:
-                # Carrega a imagem do papel timbrado
                 img_reader = ImageReader(str(self.template_path))
-
-                # Salva o estado do canvas
                 canvas.saveState()
-
-                # Desenha a imagem cobrindo toda a página
-                # No ReportLab, esta imagem será renderizada como fundo
                 canvas.drawImage(
                     img_reader,
-                    0,  # Coordenada X (canto esquerdo)
-                    0,  # Coordenada Y (canto inferior)
-                    width=self.pagesize[0],  # Largura da página
-                    height=self.pagesize[1],  # Altura da página
+                    0,
+                    0,
+                    width=self.pagesize[0],
+                    height=self.pagesize[1],
                     preserveAspectRatio=False,
                     mask=None,
                 )
-
-                # Restaura o estado do canvas
                 canvas.restoreState()
             except Exception:
-                # Se houver erro, continua sem o papel timbrado
-                # mas não interrompe a geração do PDF
                 pass
 
 
 def _make_table(data, col_widths=None, header_align="CENTER", data_align="CENTER"):
-    """
-    Cria uma tabela formatada com bordas e estilos apropriados.
-    Valores e textos centralizados por padrão.
-
-    Args:
-        data: Lista de listas com os dados da tabela (primeira linha é o cabeçalho)
-        col_widths: Lista com larguras das colunas
-        header_align: Alinhamento do cabeçalho ("LEFT", "CENTER", "RIGHT")
-        data_align: Alinhamento dos dados ("LEFT", "CENTER", "RIGHT")
-    """
+    """Cria uma tabela formatada padrão."""
     t = Table(data, colWidths=col_widths)
     t.setStyle(
         TableStyle(
             [
-                # Bordas
                 ("GRID", (0, 0), (-1, -1), 1, colors.black),
                 ("LINEBELOW", (0, 0), (-1, 0), 2, colors.black),
-                # Alinhamento do cabeçalho - centralizado
                 ("ALIGN", (0, 0), (-1, 0), header_align),
                 ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
-                # Alinhamento dos dados - centralizado
                 ("ALIGN", (0, 1), (-1, -1), data_align),
                 ("VALIGN", (0, 1), (-1, -1), "MIDDLE"),
-                # Fontes
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
                 ("FONTSIZE", (0, 0), (-1, -1), 10),
-                # Espaçamento do cabeçalho
                 ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
                 ("TOPPADDING", (0, 0), (-1, 0), 8),
-                # Espaçamento dos dados
                 ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
                 ("TOPPADDING", (0, 1), (-1, -1), 6),
                 ("LEFTPADDING", (0, 0), (-1, -1), 6),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                # Cor de fundo do cabeçalho
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
             ]
         )
@@ -148,16 +126,8 @@ def _make_table(data, col_widths=None, header_align="CENTER", data_align="CENTER
 
 
 def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
-    """
-    Gera o PDF em memória a partir do dicionário 'dados' montado em core.montar_dados_relatorio.
-
-    Características:
-    - Usa papel timbrado (nota_explicativa_em_branco.png) como imagem de fundo
-    - Centraliza valores e textos em todas as tabelas
-    - Formato A4 com margens adequadas
-    """
     buffer = io.BytesIO()
-
+    
     # Caminho para o template
     base_dir = Path(__file__).resolve().parent.parent
     template_path = base_dir / "assets" / "nota_explicativa_em_branco.png"
@@ -184,6 +154,15 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
         spaceBefore=10,
         spaceAfter=4,
     )
+    
+    heading3 = ParagraphStyle(
+        "Heading3",
+        parent=styles["Heading3"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        spaceBefore=8,
+        spaceAfter=4,
+    )
 
     story: list[Any] = []
 
@@ -193,60 +172,113 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     story.append(Paragraph(f"Requerente: {dados['requerente']}", normal))
     story.append(Paragraph(f"CNPJ: {dados['cnpj']}", normal))
     story.append(Paragraph(f"Tributação: {dados['tributacao']}", normal))
-    story.append(
-        Paragraph(f"Certificado Digital: {dados['certificado_digital']}", normal)
-    )
+    story.append(Paragraph(f"Certificado Digital: {dados['certificado_digital']}", normal))
     story.append(Spacer(1, 8))
 
     intro = (
         "Este relatório tem como objetivo acompanhar os débitos pendentes relacionados à entidade "
         "empresarial destacada acima, destacando os principais pontos sobre a situação fiscal, os "
-        "valores devidos, datas de vencimento e providências necessárias para regularização. Nos "
-        "casos em que haja desacordo com os débitos e irregularidades apresentadas ou já tenha sido "
-        "efetuado o pagamento, favor entrar em contato conosco para a resolução da pendência."
+        "valores devidos, datas de vencimento e providências necessárias para regularização."
     )
     story.append(Paragraph(intro, normal))
     story.append(Spacer(1, 8))
 
     story.append(Paragraph("DÉBITOS IDENTIFICADOS", heading))
-    story.append(
-        Paragraph(
-            "Abaixo, estão listados os débitos pendentes e a situação atual da empresa:",
-            normal,
-        )
-    )
     story.append(Spacer(1, 8))
 
     # ========================= RECEITA FEDERAL =========================
     story.append(Paragraph("RECEITA FEDERAL", heading))
+    
+    # Tabela de Totais de Contribuições
+    if "receita_federal" in dados and dados["receita_federal"]:
+        receita = dados["receita_federal"]
+        contribuicoes = receita.get("contribuicoes", {})
+        
+        if contribuicoes and contribuicoes.get("total_geral", 0.0) > 0:
+            tabela_contrib = [
+                ["Tipo de Contribuição", "Valor Total"],
+                ["Seguro Total", _fmt_moeda(contribuicoes.get("seguro_total", 0.0))],
+                ["CP Patronal Total", _fmt_moeda(contribuicoes.get("patronal_total", 0.0))],
+                ["CP Terceiros Total", _fmt_moeda(contribuicoes.get("terceiros_total", 0.0))],
+                ["TOTAL DE CONTRIBUIÇÕES", _fmt_moeda(contribuicoes.get("total_geral", 0.0))]
+            ]
+            story.append(_make_table(tabela_contrib, col_widths=[200, 120], data_align="CENTER"))
+            story.append(Spacer(1, 8))
+    
     story.append(Paragraph(dados["bloco_receita_federal"], normal))
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_rf']}", normal))
     story.append(Spacer(1, 10))
 
-    # ========================= SEFAZ (TABELA) ==========================
-    story.append(Paragraph("SEFAZ", heading))
-    if dados.get("sefaz_rows") and len(dados["sefaz_rows"]) > 0:
-        tabela_sefaz = [["Descrição do Débito", "Período", "Status"]] + dados[
-            "sefaz_rows"
-        ]
+    # ========================= SEFAZ (ESTADUAL) =========================
+    story.append(Paragraph("SEFAZ (Estadual)", heading))
+
+    # 1. Consolida linhas manuais com linhas extraídas automaticamente
+    tabela_sefaz_data = [["Descrição do Débito / Pendência", "Período / Placa", "Valor / Situação"]]
+    
+    linhas_finais = []
+    
+    # A) Adiciona linhas manuais (se houver)
+    if dados.get("sefaz_rows"):
+        linhas_finais.extend(dados["sefaz_rows"])
+
+    # B) Adiciona dados estruturados do Parser SEFAZ (Schema Novo)
+    if "sefaz_estadual" in dados and dados["sefaz_estadual"]:
+        sefaz = dados["sefaz_estadual"]
+        pendencias = sefaz.get("pendencias_identificadas", {})
+
+        # IPVA
+        for item in pendencias.get("ipva", []):
+            desc = f"IPVA {item.get('exercicio', '')}"
+            ref = item.get('placa', '')
+            val = _fmt_moeda(item.get('valor_total', 0))
+            linhas_finais.append([desc, ref, val])
+            
+        # Fronteira/Antecipado
+        for item in pendencias.get("icms_fronteira_antecipado", []):
+            desc = item.get('descricao', 'ICMS Antecipado')
+            ref = item.get('periodo_referencia', '')
+            val = _fmt_moeda(item.get('valor_total', 0))
+            linhas_finais.append([desc, ref, val])
+
+        # Competências em Aberto
+        for item in pendencias.get("icms_competencias_aberto", []):
+            desc = f"ICMS Omissão ({item.get('tipo_omissao', '')})"
+            ref = item.get('periodo', '')
+            val = _fmt_moeda(item.get('valor_estimado', 0))
+            linhas_finais.append([desc, ref, val])
+
+        # Autuações
+        for item in pendencias.get("debitos_fiscais_autuacoes", []):
+            desc = f"Autuação {item.get('natureza_debito', '')} - Proc: {item.get('numero_processo','')}"
+            ref = "Exigível"
+            val = _fmt_moeda(item.get('valor_consolidado', 0))
+            linhas_finais.append([desc, ref, val])
+
+    # Renderiza Tabela ou Mensagem "Sem Débitos"
+    if linhas_finais:
+        tabela_sefaz_data.extend(linhas_finais)
         story.append(
             _make_table(
-                tabela_sefaz,
+                tabela_sefaz_data,
                 col_widths=[220, 100, 100],
                 data_align="CENTER",
             )
         )
     else:
-        story.append(Paragraph("Sem débitos informados.", normal))
+        # Verifica se o parser identificou explicitamente como Regular
+        status_geral = dados.get("sefaz_estadual", {}).get("cabecalho_documento", {}).get("situacao_geral", "")
+        if "REGULAR" in status_geral.upper():
+            story.append(Paragraph("✅ Situação REGULAR (Certidão Negativa Emitida).", normal))
+        else:
+            story.append(Paragraph("Sem débitos informados ou identificados.", normal))
+
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_sefaz']}", normal))
     story.append(Spacer(1, 10))
 
-    # ==================== DÉBITOS MUNICIPAIS (TABELA) =================
+    # ==================== DÉBITOS MUNICIPAIS =================
     story.append(Paragraph("DÉBITOS MUNICIPAIS", heading))
     if dados.get("municipais_rows") and len(dados["municipais_rows"]) > 0:
-        tabela_mun = [["Descrição do Débito", "Período", "Valor", "Status"]] + dados[
-            "municipais_rows"
-        ]
+        tabela_mun = [["Descrição do Débito", "Período", "Valor", "Status"]] + dados["municipais_rows"]
         story.append(
             _make_table(
                 tabela_mun,
@@ -256,46 +288,119 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
         )
     else:
         story.append(Paragraph("Sem débitos informados.", normal))
-    story.append(
-        Paragraph(f"Data da consulta: {dados['data_consulta_municipal']}", normal)
-    )
+    story.append(Paragraph(f"Data da consulta: {dados['data_consulta_municipal']}", normal))
     story.append(Spacer(1, 10))
 
     # ============================ FGTS ================================
-    # ============================ FGTS ================================
     story.append(Paragraph("FGTS", heading))
+    
+    # Lógica Híbrida: Usa dados estruturados se disponíveis, senão usa texto bloco
+    usou_estrutura_fgts = False
+    if "fgts" in dados and dados["fgts"]:
+        fgts_data = dados["fgts"]
+        crf = fgts_data.get("crf_detalhes", {})
+        pendencias = fgts_data.get("pendencias_financeiras", {})
+        
+        # Mostra detalhes estruturados se houver CRF
+        if crf.get("numero_certificacao"):
+            usou_estrutura_fgts = True
+            
+            # Monta uma tabelinha de resumo do Certificado
+            status_cor = "REGULAR" if crf.get("situacao_atual") == "REGULAR" else "IRREGULAR"
+            resumo_data = [
+                ["Situação", "Validade", "Certificação"],
+                [
+                    status_cor,
+                    f"{crf.get('validade_inicio','')} a {crf.get('validade_fim','')}",
+                    crf.get("numero_certificacao", "-")
+                ]
+            ]
+            story.append(_make_table(resumo_data, col_widths=[100, 160, 160]))
+            story.append(Spacer(1, 6))
+        
+        # Tabela de Débitos do FGTS
+        lista_debitos = pendencias.get("lista_debitos", [])
+        if lista_debitos:
+            tabela_fgts_data = [["Competência", "Valor", "Situação"]]
+            for debito in lista_debitos:
+                tabela_fgts_data.append([
+                    debito.get("competencia", "-"),
+                    _fmt_moeda(debito.get("valor_estimado", 0)),
+                    debito.get("situacao", "EM ABERTO")
+                ])
+            story.append(_make_table(tabela_fgts_data, col_widths=[120, 120, 100], data_align="CENTER"))
+            story.append(Spacer(1, 6))
+        elif crf.get("situacao_atual") == "REGULAR":
+            story.append(Paragraph("✅ Situação REGULAR - Não há débitos pendentes.", normal))
+            story.append(Spacer(1, 6))
+
+    # Adiciona o bloco de texto (que serve como fallback ou complemento explicativo)
     story.append(Paragraph(dados["bloco_fgts"], normal))
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_fgts']}", normal))
     story.append(Spacer(1, 12))
 
-    # 👉 NOVA PÁGINA PARA PARCELAMENTOS + CONCLUSÃO
+    # 👉 NOVA PÁGINA
     story.append(PageBreak())
+    story.append(Spacer(1, 120)) # Espaço para o cabeçalho do timbrado na pag 2
 
-    # 👉 EMPURRA O CONTEÚDO PRA BAIXO PRA NÃO “BRIGAR” COM O TIMBRADO
-    #    ajuste o 120 se quiser mais ou menos espaço (medida em pontos)
-    story.append(Spacer(1, 120))
-
-    # ========================= PARCELAMENTOS (TABELA) =================
+    # ========================= PARCELAMENTOS =================
     story.append(Paragraph("PARCELAMENTOS", heading))
+    
+    # SISPAR - Se houver dados estruturados
+    if "receita_federal" in dados and dados["receita_federal"]:
+        receita = dados["receita_federal"]
+        sispar = receita.get("sispar", {})
+        
+        if sispar.get("tem_sispar"):
+            story.append(Paragraph("Parcelamento SISPAR", heading3))
+            detalhes = sispar.get("detalhes", [])
+            
+            if detalhes:
+                for item in detalhes:
+                    valor_total = item.get("valor_total")
+                    quantidade_parcelas = item.get("quantidade_parcelas")
+                    valor_parcela = item.get("valor_parcela")
+                    competencia = item.get("competencia")
+                    
+                    tabela_sispar_data = [["Informação", "Valor"]]
+                    
+                    if valor_total:
+                        tabela_sispar_data.append(["Valor Total", _fmt_moeda(valor_total)])
+                    if quantidade_parcelas:
+                        tabela_sispar_data.append(["Quantidade de Parcelas", str(quantidade_parcelas)])
+                    if valor_parcela:
+                        tabela_sispar_data.append(["Valor da Parcela", _fmt_moeda(valor_parcela)])
+                    if competencia:
+                        tabela_sispar_data.append(["Competência", competencia])
+                    
+                    if len(tabela_sispar_data) > 1:  # Mais que apenas o cabeçalho
+                        story.append(_make_table(tabela_sispar_data, col_widths=[200, 120], data_align="CENTER"))
+                        story.append(Spacer(1, 8))
+            else:
+                story.append(Paragraph("✅ Parcelamento SISPAR identificado (detalhes não disponíveis no documento).", normal))
+                story.append(Spacer(1, 8))
+    
+    # Parcelamentos manuais
     parcelamentos_rows = dados.get("parcelamentos_rows") or []
     if parcelamentos_rows:
+        story.append(Paragraph("Outros Parcelamentos", heading3))
         tabela_parc = [
             [
                 "Parcelamento",
-                "Valor aproximado das parcelas",
+                "Valor Parcela",
                 "Vencimento",
-                "Qtd de parcelas",
-                "Parcela atual",
+                "Qtd",
+                "Atual",
             ]
         ] + parcelamentos_rows
         story.append(
             _make_table(
                 tabela_parc,
-                col_widths=[100, 120, 90, 80, 80],
+                col_widths=[110, 100, 90, 60, 60],
                 data_align="CENTER",
             )
         )
-    else:
+    elif not ("receita_federal" in dados and dados["receita_federal"] and dados["receita_federal"].get("sispar", {}).get("tem_sispar")):
         story.append(Paragraph("Não há parcelamentos informados.", normal))
     story.append(Spacer(1, 12))
 

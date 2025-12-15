@@ -1,24 +1,30 @@
 # app.py
 """
-Aplicativo Streamlit para geração de Relatórios de Acompanhamento de Débitos
-em PDF, a partir de dados informados manualmente pelo analista.
+Aplicativo Streamlit para geração de Relatórios de Acompanhamento de Débitos.
 
-- Não depende de planilhas.
-- Usa um modelo de texto seguindo o exemplo fornecido.
-- Gera PDF com tabelas formatadas usando ReportLab.
+Integração:
+- Parsers (Receita, SEFAZ, FGTS) -> Extraem dados e estruturas JSON.
+- Core -> Monta o dicionário de dados final.
+- PDF Generator -> Renderiza tabelas complexas e papel timbrado.
+- Word Generator -> Gera documento editável.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, Any
+import tempfile
+import os
 
 import streamlit as st
+import pandas as pd
 
+# Importações dos módulos internos
 from src.core import montar_dados_relatorio, gerar_texto_relatorio, slugify
 from src.pdf_generator import gerar_pdf_bytes
-from src.word_generator import gerar_docx_bytes  # <-- NOVO IMPORT
+from src.word_generator import gerar_docx_bytes  # Generator de Word (opcional)
+from src.parsers import interpretar_todos      # Fachada dos parsers
 
 # ============================================================================
 # CONFIGURAÇÕES BÁSICAS DO PROJETO
@@ -30,9 +36,22 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ============================================================================
-# INTERFACE STREAMLIT
+# FUNÇÕES AUXILIARES
 # ============================================================================
 
+def _date_from_string(br_date: str | None) -> date:
+    """Converte 'DD/MM/AAAA' para date; se falhar ou for None, retorna hoje."""
+    if not br_date:
+        return date.today()
+    try:
+        return datetime.strptime(br_date, "%d/%m/%Y").date()
+    except ValueError:
+        return date.today()
+
+
+# ============================================================================
+# INTERFACE STREAMLIT
+# ============================================================================
 
 def main() -> None:
     st.set_page_config(
@@ -43,174 +62,440 @@ def main() -> None:
 
     st.title("🧾 Relatório de Acompanhamento de Débitos")
     st.caption(
-        "Preencha os dados coletados nos entes federais, estaduais e municipais "
-        "e gere o relatório em PDF no padrão da Eikon."
+        "Faça upload dos PDFs oficiais (Receita, SEFAZ, FGTS) para pré-preencher "
+        "os campos e gerar o relatório final com tabelas detalhadas."
     )
 
     with st.sidebar:
-        st.markdown("### Sobre o aplicativo")
-        st.markdown(
-            "- Gera relatório padrão com tabelas formatadas;\n"
-            "- Não depende de planilhas;\n"
-            "- Ideal para consultas manuais em RFB, SEFAZ, Prefeituras e FGTS."
+        st.header("Instruções")
+        st.info(
+            "1. Faça upload dos PDFs nos campos abaixo.\n"
+            "2. Clique em 'Ler PDFs'.\n"
+            "3. Revise os campos pré-preenchidos.\n"
+            "4. Gere o relatório em PDF ou Word."
         )
+        st.markdown("---")
+        st.markdown("### Módulos Ativos")
+        st.markdown("- ✅ Receita Federal (SIEF)")
+        st.markdown("- ✅ SEFAZ (IPVA/ICMS)")
+        st.markdown("- ✅ FGTS (CRF)")
 
-    # ------------------------- FORMULÁRIO PRINCIPAL -------------------------
+    # -------------------------------------------------------------------------
+    # 1. UPLOAD DE ARQUIVOS
+    # -------------------------------------------------------------------------
+
+    st.subheader("1. Upload de Documentos")
+
+    col_pdf1, col_pdf2, col_pdf3 = st.columns(3)
+    with col_pdf1:
+        pdf_receita_upload = st.file_uploader("Relatório Receita (PDF)", type=["pdf"], key="pdf_receita")
+    with col_pdf2:
+        pdf_fgts_upload = st.file_uploader("CND FGTS (PDF)", type=["pdf"], key="pdf_fgts")
+    with col_pdf3:
+        pdf_sefaz_upload = st.file_uploader("CND SEFAZ (PDF)", type=["pdf"], key="pdf_sefaz")
+
+    # Botão de processamento dos parsers
+    if st.button("📥 Ler PDFs e Extrair Dados", type="primary"):
+        tmp_paths: Dict[str, str] = {}
+
+        # Salva arquivos temporários para os parsers lerem
+        for nome, up in [
+            ("receita", pdf_receita_upload),
+            ("fgts", pdf_fgts_upload),
+            ("sefaz", pdf_sefaz_upload),
+        ]:
+            if up is not None:
+                # Cria arquivo temporário seguro
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                    tmp.write(up.getbuffer())
+                    tmp_paths[nome] = tmp.name
+
+        # Chama a inteligência dos parsers
+        with st.spinner("Analisando documentos..."):
+            resultado = interpretar_todos(
+                receita_pdf=tmp_paths.get("receita"),
+                fgts_pdf=tmp_paths.get("fgts"),
+                sefaz_pdf=tmp_paths.get("sefaz"),
+            )
+        
+        # Salva o resultado na sessão para persistir após o rerun do Streamlit
+        st.session_state["resultado_parsers"] = resultado
+        
+        # Limpeza de arquivos temporários
+        for path in tmp_paths.values():
+            try:
+                os.remove(path)
+            except:
+                pass
+
+        st.success("Leitura concluída! Verifique os dados abaixo.")
+
+    # Recupera os dados extraídos da sessão
+    resultado = st.session_state.get("resultado_parsers")
+
+    # -------------------------------------------------------------------------
+    # 1.5. DASHBOARD DE DADOS EXTRAÍDOS
+    # -------------------------------------------------------------------------
+    
+    if resultado and resultado.tem_algum_dado():
+        st.markdown("---")
+        st.subheader("📊 Dashboard - Resumo dos Dados Extraídos")
+        
+        # Cards de Totais
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        # Receita Federal - Contribuições
+        contribuicoes = {}
+        if hasattr(resultado, 'receita_federal') and resultado.receita_federal:
+            contribuicoes = resultado.receita_federal.get('contribuicoes', {})
+        
+        total_seguro = contribuicoes.get('seguro_total', 0.0)
+        total_patronal = contribuicoes.get('patronal_total', 0.0)
+        total_terceiros = contribuicoes.get('terceiros_total', 0.0)
+        total_geral_contrib = contribuicoes.get('total_geral', 0.0)
+        
+        with col1:
+            st.metric("Seguro (Total)", f"R$ {total_seguro:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        with col2:
+            st.metric("CP Patronal (Total)", f"R$ {total_patronal:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        with col3:
+            st.metric("CP Terceiros (Total)", f"R$ {total_terceiros:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        with col4:
+            st.metric("Total Contribuições", f"R$ {total_geral_contrib:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        # SEFAZ - Situação e Total
+        situacao_sefaz = "N/A"
+        total_sefaz = 0.0
+        if hasattr(resultado, 'sefaz_estadual') and resultado.sefaz_estadual:
+            cabecalho = resultado.sefaz_estadual.get('cabecalho_documento', {})
+            situacao_sefaz = cabecalho.get('situacao_geral', 'N/A')
+            resumo = resultado.sefaz_estadual.get('resumo_financeiro', {})
+            total_sefaz = resumo.get('total_geral_consolidado', 0.0) or resumo.get('total_debitos', 0.0)
+        
+        # SEFAZ e FGTS em nova linha
+        col_sefaz, col_fgts = st.columns(2)
+        
+        with col_sefaz:
+            if situacao_sefaz == 'REGULAR':
+                st.metric("SEFAZ", "✅ Regular", delta=None)
+            elif situacao_sefaz == 'EM ATRASO':
+                st.metric("SEFAZ", "⚠️ Em Atraso", 
+                         delta=f"R$ {total_sefaz:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            else:
+                st.metric("SEFAZ", situacao_sefaz, 
+                         delta=f"R$ {total_sefaz:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if total_sefaz > 0 else None)
+        
+        # FGTS - Situação
+        situacao_fgts = "N/A"
+        if hasattr(resultado, 'fgts') and resultado.fgts:
+            situacao_fgts = resultado.fgts.get('crf_detalhes', {}).get('situacao_atual', 'N/A')
+        
+        with col_fgts:
+            st.metric("FGTS (Situação)", situacao_fgts)
+        
+        # Expanders com Tabelas Detalhadas
+        st.markdown("### 📋 Detalhamento")
+        
+        # Receita Federal
+        if hasattr(resultado, 'receita_federal') and resultado.receita_federal:
+            with st.expander("🏛️ Receita Federal - Detalhes", expanded=False):
+                receita = resultado.receita_federal
+                
+                # Contribuições - Resumo
+                contribuicoes = receita.get('contribuicoes', {})
+                if contribuicoes and contribuicoes.get('total_geral', 0.0) > 0:
+                    st.markdown("#### 💰 Resumo de Contribuições")
+                    st.markdown(f"- **Seguro Total:** R$ {contribuicoes.get('seguro_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    st.markdown(f"- **Patronal Total:** R$ {contribuicoes.get('patronal_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    st.markdown(f"- **Terceiros Total:** R$ {contribuicoes.get('terceiros_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    st.markdown(f"**Total Geral de Contribuições: R$ {contribuicoes.get('total_geral', 0.0):,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
+                
+                # CP Seguro (renomeado de CP Segurados)
+                cp_seguro = receita.get('cp_seguro', {})
+                if cp_seguro.get('detalhes'):
+                    st.markdown("#### 🛡️ CP Seguro (CP-SEGUR.)")
+                    st.markdown(f"**Total: R$ {cp_seguro.get('total', 0.0):,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
+                    df_seguro = pd.DataFrame(cp_seguro['detalhes'])
+                    st.dataframe(df_seguro, use_container_width=True)
+                
+                # CP Patronal
+                if receita.get('cp_patronal', {}).get('detalhes'):
+                    st.markdown("#### CP Patronal (1138-01, 1646-01)")
+                    st.markdown(f"**Total Consolidado: R$ {receita['cp_patronal']['total']:,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
+                    df_patronal = pd.DataFrame(receita['cp_patronal']['detalhes'])
+                    st.dataframe(df_patronal, use_container_width=True)
+                
+                # CP Terceiros
+                if receita.get('cp_terceiros', {}).get('detalhes'):
+                    st.markdown("#### CP Terceiros (1170-01, 1176-01, 1191-01, 1196-01, 1200-01)")
+                    st.markdown(f"**Total Consolidado: R$ {receita['cp_terceiros']['total']:,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
+                    df_terceiros = pd.DataFrame(receita['cp_terceiros']['detalhes'])
+                    st.dataframe(df_terceiros, use_container_width=True)
+                
+                # Débitos Gerais
+                debitos_gerais = receita.get('debitos_gerais', {})
+                if any(debitos_gerais.values()):
+                    st.markdown("#### Débitos Gerais")
+                    for nome, lista in debitos_gerais.items():
+                        if lista:
+                            st.markdown(f"**{nome}**")
+                            df = pd.DataFrame(lista)
+                            st.dataframe(df, use_container_width=True)
+                
+                # Simples Nacional
+                simples = receita.get('simples_nacional', {})
+                if simples.get('tem_pendencias'):
+                    st.markdown("#### Simples Nacional")
+                    st.warning("⚠️ Há pendências de Simples Nacional")
+                    if simples.get('parcelamento', {}).get('tem_parcelamento'):
+                        parc = simples['parcelamento']
+                        st.info(f"Parcelamento ativo. Parcelas em atraso: {parc.get('parcelas_atraso', 0)}")
+                        if parc.get('data_validade'):
+                            st.info(f"Data de Validade: {parc['data_validade']}")
+                
+                # PGFN
+                pgfn = receita.get('pgfn', {})
+                if pgfn.get('previdenciario') or pgfn.get('simples_nacional'):
+                    st.markdown("#### PGFN - Dívida Ativa")
+                    if pgfn.get('previdenciario'):
+                        st.markdown("**Previdenciário:**")
+                        df_prev = pd.DataFrame(pgfn['previdenciario'])
+                        st.dataframe(df_prev, use_container_width=True)
+                    if pgfn.get('simples_nacional'):
+                        st.markdown("**Simples Nacional:**")
+                        df_sn = pd.DataFrame(pgfn['simples_nacional'])
+                        st.dataframe(df_sn, use_container_width=True)
+                
+                # SISPAR
+                sispar = receita.get('sispar', {})
+                if sispar.get('tem_sispar'):
+                    st.markdown("#### SISPAR")
+                    st.info("✅ Parcelamento SISPAR identificado")
+                    if sispar.get('detalhes'):
+                        df_sispar = pd.DataFrame(sispar['detalhes'])
+                        st.dataframe(df_sispar, use_container_width=True)
+        
+        # SEFAZ
+        if hasattr(resultado, 'sefaz_estadual') and resultado.sefaz_estadual:
+            with st.expander("🏛️ SEFAZ - Detalhes", expanded=False):
+                sefaz = resultado.sefaz_estadual
+                situacao = sefaz.get('cabecalho_documento', {}).get('situacao_geral', 'N/A')
+                
+                # Exibe situação com destaque
+                if situacao == 'REGULAR':
+                    st.success(f"✅ **Situação: {situacao}** - Nada consta")
+                elif situacao == 'EM ATRASO':
+                    st.error(f"⚠️ **Situação: {situacao}**")
+                else:
+                    st.warning(f"⚠️ **Situação: {situacao}**")
+                
+                # Resumo Financeiro (sempre mostra, mesmo se regular)
+                resumo = sefaz.get('resumo_financeiro', {})
+                total_geral = resumo.get('total_geral_consolidado', 0.0) or resumo.get('total_debitos', 0.0)
+                
+                if total_geral > 0:
+                    st.markdown("#### 💰 Resumo Financeiro")
+                    st.markdown(f"**Total de Débitos: R$ {total_geral:,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
+                
+                # Se tem débitos, mostra detalhes
+                if situacao in ['IRREGULAR', 'EM ATRASO', 'IRREGULAR / COM PENDÊNCIAS'] or total_geral > 0:
+                    pendencias = sefaz.get('pendencias_identificadas', {})
+                    
+                    # IPVA
+                    if pendencias.get('ipva'):
+                        st.markdown("#### 🚗 IPVA")
+                        df_ipva = pd.DataFrame(pendencias['ipva'])
+                        st.dataframe(df_ipva, use_container_width=True)
+                    
+                    # ICMS Fronteira/Antecipado
+                    if pendencias.get('icms_fronteira_antecipado'):
+                        st.markdown("#### 📋 ICMS Fronteira/Antecipado")
+                        df_icms = pd.DataFrame(pendencias['icms_fronteira_antecipado'])
+                        st.dataframe(df_icms, use_container_width=True)
+                    
+                    # Débitos Fiscais
+                    if pendencias.get('debitos_fiscais_autuacoes'):
+                        st.markdown("#### 💸 Débitos Fiscais")
+                        df_debitos = pd.DataFrame(pendencias['debitos_fiscais_autuacoes'])
+                        st.dataframe(df_debitos, use_container_width=True)
+                    
+                    # Detalhamento do resumo
+                    if resumo and (resumo.get('total_ipva', 0.0) > 0 or resumo.get('total_icms_fronteira', 0.0) > 0 or resumo.get('total_divida_ativa', 0.0) > 0):
+                        st.markdown("#### 📊 Detalhamento")
+                        if resumo.get('total_ipva', 0.0) > 0:
+                            st.markdown(f"- Total IPVA: R$ {resumo.get('total_ipva', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                        if resumo.get('total_icms_fronteira', 0.0) > 0:
+                            st.markdown(f"- Total ICMS Fronteira: R$ {resumo.get('total_icms_fronteira', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                        if resumo.get('total_divida_ativa', 0.0) > 0:
+                            st.markdown(f"- Total Dívida Ativa: R$ {resumo.get('total_divida_ativa', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        # FGTS
+        if hasattr(resultado, 'fgts') and resultado.fgts:
+            with st.expander("🏦 FGTS - Detalhes", expanded=False):
+                fgts = resultado.fgts
+                situacao = fgts.get('crf_detalhes', {}).get('situacao_atual', 'N/A')
+                st.markdown(f"**Situação: {situacao}**")
+                
+                if situacao == 'REGULAR':
+                    validade = fgts.get('crf_detalhes', {}).get('validade_fim', '')
+                    if validade:
+                        st.success(f"✅ Regular no FGTS. Validade: {validade}")
+                else:
+                    pendencias = fgts.get('pendencias_financeiras', {})
+                    if pendencias.get('lista_debitos'):
+                        st.warning(f"⚠️ {pendencias.get('resumo', {}).get('qtd_competencias', 0)} competências pendentes")
+                        df_comp = pd.DataFrame(pendencias['lista_debitos'])
+                        st.dataframe(df_comp, use_container_width=True)
+        
+        st.markdown("---")
+
+    # -------------------------------------------------------------------------
+    # 2. FORMULÁRIO DE EDIÇÃO
+    # -------------------------------------------------------------------------
 
     with st.form("form_relatorio"):
-        st.subheader("Dados principais")
+        st.subheader("2. Dados Principais")
 
         col_a, col_b = st.columns(2)
         with col_a:
-            data_relatorio = st.date_input(
-                "Data do relatório",
-                value=date.today(),
-            )
+            data_relatorio = st.date_input("Data do relatório", value=date.today())
         with col_b:
-            periodo_referencia = st.text_input(
-                "Período de referência *",
-                placeholder="Ex.: Setembro/2025",
-            )
+            periodo_referencia = st.text_input("Período de referência *", placeholder="Ex.: Novembro/2025")
 
-        st.subheader("Dados da empresa / requerente")
-        requerente = st.text_input("Requerente / Nome da empresa *")
-        cnpj = st.text_input("CNPJ *", placeholder="00.000.000/0001-00")
+        st.markdown("#### Identificação do Contribuinte")
+        
+        # Defaults inteligentes
+        def_req = resultado.requerente if resultado and resultado.requerente else ""
+        def_cnpj = resultado.cnpj if resultado and resultado.cnpj else ""
+
+        requerente = st.text_input("Requerente / Razão Social *", value=def_req)
+        cnpj = st.text_input("CNPJ *", value=def_cnpj, placeholder="00.000.000/0001-00")
 
         col_c, col_d = st.columns(2)
         with col_c:
-            tributacao = st.selectbox(
-                "Tributação",
-                options=[
-                    "",
-                    "Simples Nacional",
-                    "Lucro Presumido",
-                    "Lucro Real",
-                    "Outro",
-                ],
-                index=0,
-            )
+            tributacao = st.selectbox("Tributação", ["", "Simples Nacional", "Lucro Presumido", "Lucro Real", "Outro"])
         with col_d:
-            certificado_digital = st.text_input(
-                "Certificado Digital",
-                placeholder="Ex.: 24/03/2026",
-            )
+            certificado_digital = st.text_input("Certificado Digital (Validade)", placeholder="Ex.: 24/03/2026")
 
-        st.subheader("Consultas realizadas")
+        # --------------------- SEÇÃO DE DATAS ---------------------
+        st.markdown("#### Datas das Consultas")
+        
+        # Extração de datas dos parsers
+        d_rf = _date_from_string(resultado.data_consulta_rf) if resultado else date.today()
+        d_sefaz = _date_from_string(resultado.data_consulta_sefaz) if resultado else date.today()
+        d_fgts = _date_from_string(resultado.data_consulta_fgts) if resultado else date.today()
+        d_mun = date.today()
 
-        col_rf, col_sefaz = st.columns(2)
-        with col_rf:
-            data_consulta_rf = st.date_input(
-                "Data da consulta à Receita Federal",
-                value=date.today(),
-            )
-        with col_sefaz:
-            data_consulta_sefaz = st.date_input(
-                "Data da consulta à SEFAZ",
-                value=date.today(),
-            )
+        col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+        with col_d1:
+            data_consulta_rf = st.date_input("Receita Federal", value=d_rf)
+        with col_d2:
+            data_consulta_sefaz = st.date_input("SEFAZ", value=d_sefaz)
+        with col_d3:
+            data_consulta_fgts = st.date_input("FGTS", value=d_fgts)
+        with col_d4:
+            data_consulta_municipal = st.date_input("Municipal", value=d_mun)
 
-        col_mun, col_fgts = st.columns(2)
-        with col_mun:
-            data_consulta_municipal = st.date_input(
-                "Data da consulta ao ente municipal",
-                value=date.today(),
-            )
-        with col_fgts:
-            data_consulta_fgts = st.date_input(
-                "Data da consulta ao FGTS",
-                value=date.today(),
-            )
-
-        st.subheader("Seções do relatório")
-
-        # Receita Federal – texto direto
+        # --------------------- SEÇÃO DE CONTEÚDO ---------------------
+        st.subheader("3. Detalhamento dos Débitos")
+        
+        # --- Receita Federal ---
+        def_rec = resultado.bloco_receita_federal if resultado and resultado.bloco_receita_federal else ""
         bloco_receita_federal = st.text_area(
-            "Receita Federal (texto)",
-            placeholder="- Não foi constatado débitos para o exercício fiscal em consulta.",
-            height=80,
+            "Receita Federal (Resumo/Texto)", 
+            value=def_rec, 
+            height=100, 
+            placeholder="Cole o texto ou deixe o parser preencher."
         )
 
-        # SEFAZ – mini tabela: uma linha por débito
+        # --- SEFAZ (Híbrido: Texto Manual + Dados Estruturados) ---
+        st.markdown("---")
+        st.markdown("**SEFAZ (Estadual)**")
+        if resultado and getattr(resultado, "sefaz_estadual", None):
+            st.info("✅ Dados estruturados de IPVA/ICMS foram carregados e serão incluídos na tabela do PDF.")
+        
+        # Tratamento para tabela manual (Legado)
+        def_sefaz_manual = ""
+        if resultado and resultado.sefaz_rows:
+            # Converte lista de listas em texto para o textarea
+            lines = []
+            for row in resultado.sefaz_rows:
+                lines.append(" | ".join(str(x) for x in row))
+            def_sefaz_manual = "\n".join(lines)
+
         tabela_sefaz = st.text_area(
-            "SEFAZ – linhas da tabela (uma por linha)",
-            value="IPVA     RCG-7G42     Em atraso\nIPVA     RVJ-1A14     Em atraso",
-            height=90,
+            "Itens Adicionais SEFAZ (Opcional - Formato: Descrição | Período | Status)", 
+            value=def_sefaz_manual,
+            height=80,
+            help="Use barra vertical | para separar as colunas se digitar manualmente."
         )
 
-        # Municipais – mini tabela
+        # --- Municipais ---
+        st.markdown("---")
         tabela_municipais = st.text_area(
-            "Débitos Municipais – linhas da tabela (uma por linha)",
-            value="CIM     2025     R$ 1.493,85     Em atraso",
-            height=80,
+            "Débitos Municipais (Manual)",
+            placeholder="Taxa TFF | 2025 | R$ 500,00 | Em aberto",
+            height=80
         )
 
-        # FGTS – texto direto
-        bloco_fgts = st.text_area(
-            "FGTS (texto)",
-            value="- Não foi constatado débitos para o exercício fiscal em consulta, regular com envio do FGTS.",
-            height=80,
-        )
+        # --- FGTS ---
+        st.markdown("---")
+        st.markdown("**FGTS**")
+        if resultado and getattr(resultado, "fgts", None):
+            st.info("✅ Dados detalhados do CRF/FGTS carregados.")
+            
+        def_fgts = resultado.bloco_fgts if resultado and resultado.bloco_fgts else ""
+        bloco_fgts = st.text_area("Texto FGTS (Complementar)", value=def_fgts, height=80)
 
-        # Parcelamentos – mini tabela
+        # --- Parcelamentos ---
+        st.markdown("---")
         tabela_parcelamentos = st.text_area(
-            "Parcelamentos – linhas da tabela (uma por linha)",
-            value="SIMPLES NACIONAL     R$ 2.100,00     Último dia útil do mês     60     28",
-            height=80,
+            "Parcelamentos Ativos (Manual)",
+            placeholder="SIMPLES | R$ 1000 | Dia 20 | 60 | 10",
+            height=80
         )
 
-        st.subheader("Conclusão e responsável técnico")
-
+        # --- Conclusão e Responsável ---
+        st.subheader("4. Finalização")
         bloco_conclusao = st.text_area(
-            "Conclusão",
+            "Conclusão e Recomendações",
             value=(
-                "Listagem das principais ações adotadas até o momento para regularização dos débitos:\n"
-                "Verificação de Irregularidades: Todos os débitos foram verificados junto aos órgãos "
-                "competentes, sendo identificados tanto débitos fiscais quanto administrativos.\n"
-                "Solicitação de Certidões: Certidões Negativas de Débito (CND) para comprovar a "
-                "regularização fiscal, após pagamento do débito.\n"
-                "Prazos: Importante observar os prazos para pagamento, pois débitos antigos pendentes, caso "
-                "não sejam regularizados, poderão resultar na inclusão da empresa no Cadastro Informativo "
-                "de Créditos não Quitados do Setor Público Federal (CADIN).\n"
-                "Caso haja pendência na PGFN – Procuradoria Geral da Fazenda Nacional a não regularização "
-                "poderá acarretar o envio do débito para ser protestado em cartório."
+                "Recomendamos a regularização imediata dos débitos listados para evitar inscrição em Dívida Ativa.\n"
+                "Os parcelamentos ativos devem ser mantidos em dia."
             ),
-            height=200,
+            height=120
         )
 
-        col_resp1, col_resp2 = st.columns(2)
-        with col_resp1:
-            responsavel_nome = st.text_input(
-                "Responsável pelo relatório",
-                placeholder="Ex.: Caio César",
-            )
-            responsavel_cargo = st.text_input(
-                "Cargo",
-                placeholder="Ex.: Gerente de Contas",
-            )
-        with col_resp2:
-            responsavel_email = st.text_input(
-                "E-mail do responsável",
-                placeholder="cesar.tributario@eikonsolucoes.com.br",
-            )
+        c_r1, c_r2, c_r3 = st.columns(3)
+        with c_r1:
+            responsavel_nome = st.text_input("Responsável Técnico", placeholder="Nome Completo")
+        with c_r2:
+            responsavel_cargo = st.text_input("Cargo", placeholder="Contador / Analista")
+        with c_r3:
+            responsavel_email = st.text_input("E-mail", placeholder="contato@empresa.com")
 
-        # BOTÃO (agora mais genérico, já que teremos PDF e Word)
-        gerar = st.form_submit_button("Gerar relatório")
+        # BOTÃO DE AÇÃO
+        gerar = st.form_submit_button("🔨 Gerar Relatório Oficial", type="primary")
 
-    # ------------------------- PROCESSAMENTO -------------------------
+    # -------------------------------------------------------------------------
+    # 3. PROCESSAMENTO E GERAÇÃO
+    # -------------------------------------------------------------------------
 
     if gerar:
+        # Validação simples
         erros = []
-        if not periodo_referencia.strip():
-            erros.append("Período de referência")
-        if not requerente.strip():
-            erros.append("Requerente / Nome da empresa")
-        if not cnpj.strip():
-            erros.append("CNPJ")
-
+        if not periodo_referencia: erros.append("Período de Referência")
+        if not requerente: erros.append("Requerente")
+        if not cnpj: erros.append("CNPJ")
+        
         if erros:
-            st.error("Por favor, preencha os campos obrigatórios: " + ", ".join(erros))
+            st.error(f"Campos obrigatórios faltando: {', '.join(erros)}")
             return
 
+        # Montagem do Dicionário Base
         form_data = {
             "data_relatorio": data_relatorio,
             "periodo_referencia": periodo_referencia,
@@ -233,64 +518,61 @@ def main() -> None:
             "responsavel_email": responsavel_email,
         }
 
-        dados = montar_dados_relatorio(form_data)
-        texto_relatorio = gerar_texto_relatorio(dados)
+        # [CRÍTICO] INJEÇÃO DE DADOS ESTRUTURADOS (JSON SCHEMAS)
+        # Se os parsers extraíram objetos complexos, passamos eles para o core/pdf_generator
+        if resultado:
+            if getattr(resultado, "sefaz_estadual", None):
+                form_data["sefaz_estadual"] = resultado.sefaz_estadual
+            
+            if getattr(resultado, "fgts", None):
+                form_data["fgts"] = resultado.fgts
+            
+            if getattr(resultado, "receita_federal", None):
+                form_data["receita_federal"] = resultado.receita_federal
 
-        st.success(
-            "Relatório gerado com sucesso! Veja o texto abaixo e baixe o arquivo."
-        )
-
-        st.subheader("Pré-visualização do texto")
-        st.text_area(
-            "Texto do relatório",
-            value=texto_relatorio,
-            height=350,
-        )
-
-        # ------------------------- GERAÇÃO DOS ARQUIVOS -------------------------
-
-        # Nome base para ambos os formatos
-        nome_base = (
-            f"relatorio_debitos_"
-            f"{slugify(dados['requerente'])}_"
-            f"{slugify(dados['periodo_referencia'])}"
-        )
-        nome_arquivo_pdf = f"{nome_base}.pdf"
-        nome_arquivo_docx = f"{nome_base}.docx"
-
-        # Gera bytes dos arquivos
-        pdf_bytes = gerar_pdf_bytes(dados)
-        docx_bytes = gerar_docx_bytes(dados)
-
-        # Salva uma cópia do PDF no disco (histórico interno)
+        # Processamento Final (Core)
+        dados_finais = montar_dados_relatorio(form_data)
+        
+        # Geração dos Arquivos em Memória
+        pdf_bytes = gerar_pdf_bytes(dados_finais)
         try:
-            caminho_saida = OUTPUT_DIR / nome_arquivo_pdf
-            with open(caminho_saida, "wb") as f:
-                f.write(pdf_bytes)
-            st.info(f"Cópia em PDF salva em: {caminho_saida}")
-        except OSError as e:
-            st.warning(f"Não foi possível salvar a cópia em disco: {e}")
+            docx_bytes = gerar_docx_bytes(dados_finais)
+        except Exception:
+            docx_bytes = None # Fallback caso word_generator não esteja 100%
 
-        # ------------------------- ABAS DE DOWNLOAD -------------------------
+        # Feedback Visual
+        st.balloons()
+        st.success("Relatório gerado com sucesso!")
 
-        tab_pdf, tab_word = st.tabs(["📄 Baixar PDF", "📝 Baixar Word"])
-
-        with tab_pdf:
+        # Área de Download
+        st.subheader("📥 Downloads")
+        
+        col_down1, col_down2 = st.columns(2)
+        
+        nome_arquivo = f"Relatorio_Fiscal_{slugify(requerente)}_{slugify(periodo_referencia)}"
+        
+        with col_down1:
             st.download_button(
-                label="📥 Baixar PDF do relatório",
+                label="📄 Baixar PDF (Com Tabelas)",
                 data=pdf_bytes,
-                file_name=nome_arquivo_pdf,
-                mime="application/pdf",
+                file_name=f"{nome_arquivo}.pdf",
+                mime="application/pdf"
             )
+        
+        with col_down2:
+            if docx_bytes:
+                st.download_button(
+                    label="📝 Baixar Word (Editável)",
+                    data=docx_bytes,
+                    file_name=f"{nome_arquivo}.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+            else:
+                st.warning("Geração de Word indisponível no momento.")
 
-        with tab_word:
-            st.download_button(
-                label="📥 Baixar Word do relatório",
-                data=docx_bytes,
-                file_name=nome_arquivo_docx,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            )
-
+        # Pré-visualização rápida do texto
+        with st.expander("Ver texto do relatório (Raw)"):
+            st.text(gerar_texto_relatorio(dados_finais))
 
 if __name__ == "__main__":
     main()

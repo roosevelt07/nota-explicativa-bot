@@ -79,6 +79,17 @@ def _add_table(doc: Document, headers, rows):
     doc.add_paragraph("")
 
 
+def _fmt_moeda_word(valor):
+    """Formata float para R$ X.XXX,XX"""
+    if not valor:
+        return "-"
+    try:
+        val_float = float(valor)
+        return f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return str(valor)
+
+
 def _add_papel_timbrado_topo(doc: Document) -> None:
     """
     Adiciona o papel timbrado como imagem no topo do documento (antes do texto).
@@ -140,6 +151,21 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     # ========================= RECEITA FEDERAL =========================
 
     _add_heading(doc, "RECEITA FEDERAL")
+    
+    # Tabela de Totais de Contribuições
+    if "receita_federal" in dados and dados["receita_federal"]:
+        receita = dados["receita_federal"]
+        contribuicoes = receita.get("contribuicoes", {})
+        
+        if contribuicoes and contribuicoes.get("total_geral", 0.0) > 0:
+            tabela_contrib_rows = [
+                ["Seguro Total", _fmt_moeda_word(contribuicoes.get("seguro_total", 0.0))],
+                ["CP Patronal Total", _fmt_moeda_word(contribuicoes.get("patronal_total", 0.0))],
+                ["CP Terceiros Total", _fmt_moeda_word(contribuicoes.get("terceiros_total", 0.0))],
+                ["TOTAL DE CONTRIBUIÇÕES", _fmt_moeda_word(contribuicoes.get("total_geral", 0.0))]
+            ]
+            _add_table(doc, ["Tipo de Contribuição", "Valor Total"], tabela_contrib_rows)
+    
     _add_paragrafo(doc, dados.get("bloco_receita_federal", ""))
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_rf']}")
     doc.add_paragraph("")
@@ -147,15 +173,56 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     # ============================= SEFAZ ==============================
 
     _add_heading(doc, "SEFAZ")
+    
+    # Consolida linhas manuais com linhas extraídas automaticamente
+    linhas_finais_sefaz = []
+    
+    # A) Adiciona linhas manuais (se houver)
     sefaz_rows = dados.get("sefaz_rows") or []
     if sefaz_rows:
+        linhas_finais_sefaz.extend(sefaz_rows)
+    
+    # B) Adiciona dados estruturados do Parser SEFAZ
+    if "sefaz_estadual" in dados and dados["sefaz_estadual"]:
+        sefaz = dados["sefaz_estadual"]
+        pendencias = sefaz.get("pendencias_identificadas", {})
+        
+        # IPVA
+        for item in pendencias.get("ipva", []):
+            desc = f"IPVA {item.get('exercicio', '')}"
+            ref = item.get('placa', '')
+            val = _fmt_moeda_word(item.get('valor_total', 0))
+            linhas_finais_sefaz.append([desc, ref, val])
+        
+        # Fronteira/Antecipado
+        for item in pendencias.get("icms_fronteira_antecipado", []):
+            desc = item.get('descricao', 'ICMS Antecipado')
+            ref = item.get('periodo_referencia', '')
+            val = _fmt_moeda_word(item.get('valor_total', 0))
+            linhas_finais_sefaz.append([desc, ref, val])
+        
+        # Débitos Fiscais
+        for item in pendencias.get("debitos_fiscais_autuacoes", []):
+            desc = f"Autuação {item.get('natureza_debito', '')}"
+            ref = item.get('periodo', '')
+            val = _fmt_moeda_word(item.get('valor_consolidado', 0))
+            linhas_finais_sefaz.append([desc, ref, val])
+    
+    # Renderiza Tabela ou Mensagem "Sem Débitos"
+    if linhas_finais_sefaz:
         _add_table(
             doc,
-            ["Descrição do Débito", "Período", "Status"],
-            sefaz_rows,
+            ["Descrição do Débito / Pendência", "Período / Placa", "Valor / Situação"],
+            linhas_finais_sefaz,
         )
     else:
-        _add_paragrafo(doc, "Sem débitos informados.")
+        # Verifica se o parser identificou explicitamente como Regular
+        status_geral = dados.get("sefaz_estadual", {}).get("cabecalho_documento", {}).get("situacao_geral", "")
+        if "REGULAR" in status_geral.upper():
+            _add_paragrafo(doc, "✅ Situação REGULAR (Certidão Negativa Emitida).")
+        else:
+            _add_paragrafo(doc, "Sem débitos informados ou identificados.")
+    
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_sefaz']}")
     doc.add_paragraph("")
 
@@ -177,6 +244,39 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     # =============================== FGTS =============================
 
     _add_heading(doc, "FGTS")
+    
+    # Dados estruturados do FGTS
+    if "fgts" in dados and dados["fgts"]:
+        fgts_data = dados["fgts"]
+        crf = fgts_data.get("crf_detalhes", {})
+        pendencias = fgts_data.get("pendencias_financeiras", {})
+        
+        # Resumo do Certificado
+        if crf.get("numero_certificacao"):
+            resumo_fgts_rows = [[
+                crf.get("situacao_atual", "-"),
+                f"{crf.get('validade_inicio','')} a {crf.get('validade_fim','')}",
+                crf.get("numero_certificacao", "-")
+            ]]
+            _add_table(doc, ["Situação", "Validade", "Certificação"], resumo_fgts_rows)
+            doc.add_paragraph("")
+        
+        # Tabela de Débitos do FGTS
+        lista_debitos = pendencias.get("lista_debitos", [])
+        if lista_debitos:
+            tabela_fgts_rows = []
+            for debito in lista_debitos:
+                tabela_fgts_rows.append([
+                    debito.get("competencia", "-"),
+                    _fmt_moeda_word(debito.get("valor_estimado", 0)),
+                    debito.get("situacao", "EM ABERTO")
+                ])
+            _add_table(doc, ["Competência", "Valor", "Situação"], tabela_fgts_rows)
+            doc.add_paragraph("")
+        elif crf.get("situacao_atual") == "REGULAR":
+            _add_paragrafo(doc, "✅ Situação REGULAR - Não há débitos pendentes.")
+            doc.add_paragraph("")
+    
     _add_paragrafo(doc, dados.get("bloco_fgts", ""))
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_fgts']}")
     doc.add_paragraph("")
@@ -184,8 +284,45 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     # =========================== PARCELAMENTOS ========================
 
     _add_heading(doc, "PARCELAMENTOS")
+    
+    # SISPAR - Se houver dados estruturados
+    if "receita_federal" in dados and dados["receita_federal"]:
+        receita = dados["receita_federal"]
+        sispar = receita.get("sispar", {})
+        
+        if sispar.get("tem_sispar"):
+            _add_heading(doc, "Parcelamento SISPAR")
+            detalhes = sispar.get("detalhes", [])
+            
+            if detalhes:
+                for item in detalhes:
+                    valor_total = item.get("valor_total")
+                    quantidade_parcelas = item.get("quantidade_parcelas")
+                    valor_parcela = item.get("valor_parcela")
+                    competencia = item.get("competencia")
+                    
+                    tabela_sispar_rows = []
+                    
+                    if valor_total:
+                        tabela_sispar_rows.append(["Valor Total", _fmt_moeda_word(valor_total)])
+                    if quantidade_parcelas:
+                        tabela_sispar_rows.append(["Quantidade de Parcelas", str(quantidade_parcelas)])
+                    if valor_parcela:
+                        tabela_sispar_rows.append(["Valor da Parcela", _fmt_moeda_word(valor_parcela)])
+                    if competencia:
+                        tabela_sispar_rows.append(["Competência", competencia])
+                    
+                    if tabela_sispar_rows:
+                        _add_table(doc, ["Informação", "Valor"], tabela_sispar_rows)
+                        doc.add_paragraph("")
+            else:
+                _add_paragrafo(doc, "✅ Parcelamento SISPAR identificado (detalhes não disponíveis no documento).")
+                doc.add_paragraph("")
+    
+    # Parcelamentos manuais
     parcelamentos_rows = dados.get("parcelamentos_rows") or []
     if parcelamentos_rows:
+        _add_heading(doc, "Outros Parcelamentos")
         _add_table(
             doc,
             [
@@ -197,7 +334,7 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
             ],
             parcelamentos_rows,
         )
-    else:
+    elif not ("receita_federal" in dados and dados["receita_federal"] and dados["receita_federal"].get("sispar", {}).get("tem_sispar")):
         _add_paragrafo(doc, "Não há parcelamentos informados.")
     doc.add_paragraph("")
 

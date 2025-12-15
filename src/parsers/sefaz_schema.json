@@ -1,0 +1,74 @@
+{
+  "cabecalho_documento": {
+    "orgao": "SEFAZ",
+    "estado": "PE",
+    "tipo_documento": "Certidão de Regularidade Fiscal / Relatório de Situação",
+    "numero_certidao": "",
+    "data_emissao": "",
+    "validade": "",
+    "codigo_autenticidade": "",
+    "situacao_geral": ""
+  },
+  "contribuinte": {
+    "cnpj_cpf": "",
+    "razao_social": "",
+    "inscricao_estadual": ""
+  },
+  "pendencias_identificadas": {
+    "ipva": [
+      {
+        "exercicio": "",
+        "placa": "",
+        "renavam": "",
+        "valor_original": 0.0,
+        "valor_total": 0.0,
+        "status": ""
+      }
+    ],
+    "icms_fronteira_antecipado": [
+      {
+        "periodo_referencia": "",
+        "codigo_receita": "",
+        "descricao": "",
+        "data_vencimento": "",
+        "valor_total": 0.0
+      }
+    ],
+    "icms_competencias_aberto": [
+      {
+        "periodo": "",
+        "tipo_omissao": "", 
+        "regime_apuracao": "",
+        "valor_estimado": 0.0
+      }
+    ],
+    "debitos_fiscais_autuacoes": [
+      {
+        "numero_processo": "",
+        "natureza_debito": "",
+        "periodo": "",
+        "fase_processual": "",
+        "valor_consolidado": 0.0
+      }
+    ],
+    "divida_ativa_estadual": [
+      {
+        "numero_inscricao": "",
+        "natureza": "",
+        "situacao": "",
+        "valor": 0.0
+      }
+    ]
+  },
+  "resumo_financeiro": {
+    "total_ipva": 0.0,
+    "total_icms_fronteira": 0.0,
+    "total_icms_normal": 0.0,
+    "total_divida_ativa": 0.0,
+    "total_geral_consolidado": 0.0
+  },
+  "mensagens_sistema": {
+    "observacoes_rodape": "",
+    "alerta_irregularidade": false
+  }
+}

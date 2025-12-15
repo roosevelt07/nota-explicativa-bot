@@ -1,3 +1,4 @@
+from __future__ import annotations
 # src/templates.py
 """
 Modelos de texto (templates) usados pelo NOTA-EXPLICATIVA-BOT.
@@ -5,7 +6,6 @@ Modelos de texto (templates) usados pelo NOTA-EXPLICATIVA-BOT.
 Aqui ficam apenas strings e textos padrão, sem lógica de negócio.
 """
 
-from __future__ import annotations
 
 # -----------------------------------------------------------------------------
 # TEMPLATE PRINCIPAL DO RELATÓRIO
@@ -26,40 +26,46 @@ valores devidos, datas de vencimento e providências necessárias para regulariz
 casos em que haja desacordo com os débitos e irregularidades apresentadas ou já tenha sido
 efetuado o pagamento, favor entrar em contato conosco para a resolução da pendência.
 
-DÉBITOS IDENTIFICADOS:
-Abaixo, estão listados os débitos pendentes, e situação atual da empresa:
+================================================================
+DÉBITOS IDENTIFICADOS
+================================================================
 
-Eikon Soluções Ltda CNPJ: 09.502.539/0001-13
-
-RECEITA FEDERAL
+--- RECEITA FEDERAL ---
 {bloco_receita_federal}
 Data da consulta: {data_consulta_rf}
 
-SEFAZ
-Descrição do Débito     Período     Status
+
+--- SEFAZ (ESTADUAL) ---
+DESCRIÇÃO | PERÍODO/REF | STATUS/VALOR
 {tabela_sefaz}
 Data da consulta: {data_consulta_sefaz}
 
-DÉBITOS MUNICIPAIS
-Descrição do Débito     Período     Valor     Status
+
+--- DÉBITOS MUNICIPAIS ---
+DESCRIÇÃO | PERÍODO | VALOR | STATUS
 {tabela_municipais}
 Data da consulta: {data_consulta_municipal}
 
-Eikon Soluções Ltda CNPJ: 09.502.539/0001-13
 
-FGTS
+--- FGTS ---
 {bloco_fgts}
 Data da consulta: {data_consulta_fgts}
 
-PARCELAMENTOS
-PARCELAMENTO     VALOR APROXIMADO DAS PARCELAS     VENCIMENTO     QTD DE PARCELAS     PARCELA ATUAL
+
+================================================================
+PARCELAMENTOS ATIVOS
+================================================================
+PARCELAMENTO | VALOR PARCELA | VENCIMENTO | QTD TOTAL | PARCELA ATUAL
 {tabela_parcelamentos}
 
-CONCLUSÃO:
+
+================================================================
+CONCLUSÃO
+================================================================
 {bloco_conclusao}
 
-Eikon Soluções Ltda CNPJ: 09.502.539/0001-13
 
+----------------------------------------------------------------
 Atenciosamente,
 {responsavel_nome}
 {responsavel_cargo}
@@ -71,33 +77,31 @@ e-mail: {responsavel_email}
 # -----------------------------------------------------------------------------
 
 DEFAULT_RECEITA_FEDERAL = (
-    "- Não foi constatado débitos para o exercício fiscal em consulta."
+    "- Não foram constatados débitos para o exercício fiscal em consulta."
 )
 
+# Dica: Use | para separar colunas com precisão
 DEFAULT_SEFAZ_TABELA = (
-    "IPVA     RCG-7G42     Em atraso\n" "IPVA     RVJ-1A14     Em atraso"
+    "IPVA 2024 | PLACA KKK-0000 | R$ 1.500,00 (Em atraso)\n"
+    "ICMS Fronteira | 01/2025 | R$ 350,00"
 )
 
-DEFAULT_MUNICIPAIS_TABELA = "CIM     2025     R$ 1.493,85     Em atraso"
+DEFAULT_MUNICIPAIS_TABELA = (
+    "Taxa de Licença (TLF) | 2025 | R$ 1.493,85 | Em atraso"
+)
 
 DEFAULT_FGTS = (
-    "- Não foi constatado débitos para o exercício fiscal em consulta, "
-    "regular com envio do FGTS."
+    "- Não foram constatados débitos para o exercício fiscal em consulta. "
+    "Situação regular perante o FGTS."
 )
 
 DEFAULT_PARCELAMENTOS_TABELA = (
-    "SIMPLES NACIONAL     R$ 2.100,00     Último dia útil do mês     60     28"
+    "SIMPLES NACIONAL | R$ 2.100,00 | Dia 20 | 60 | 28"
 )
 
 DEFAULT_CONCLUSAO = (
-    "Listagem das principais ações adotadas até o momento para regularização dos débitos:\n"
-    "Verificação de Irregularidades: Todos os débitos foram verificados junto aos órgãos "
-    "competentes, sendo identificados tanto débitos fiscais quanto administrativos.\n"
-    "Solicitação de Certidões: Certidões Negativas de Débito (CND) para comprovar a "
-    "regularização fiscal, após pagamento do débito.\n"
-    "Prazos: Importante observar os prazos para pagamento, pois débitos antigos pendentes, caso "
-    "não sejam regularizados, poderão resultar na inclusão da empresa no Cadastro Informativo "
-    "de Créditos não Quitados do Setor Público Federal (CADIN).\n"
-    "Caso haja pendência na PGFN – Procuradoria Geral da Fazenda Nacional a não regularização "
-    "poderá acarretar o envio do débito para ser protestado em cartório."
+    "Ações recomendadas:\n"
+    "1. Regularização Imediata: Proceder com o pagamento das guias de IPVA e Taxas Municipais listadas acima.\n"
+    "2. Monitoramento: Acompanhar o processamento do pagamento para garantir a baixa nos sistemas da SEFAZ e Prefeitura.\n"
+    "3. Parcelamento: O parcelamento do Simples Nacional encontra-se em dia. Manter o pagamento pontual para evitar rescisão."
 )

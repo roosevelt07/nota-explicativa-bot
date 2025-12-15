@@ -1,0 +1,41 @@
+{
+  "metadados": {
+    "tipo_documento": "CRF - Certificado de Regularidade do FGTS",
+    "data_processamento": "",
+    "arquivo_origem": ""
+  },
+  "empregador": {
+    "identificacao": "",
+    "tipo_identificacao": "CNPJ", 
+    "razao_social": "",
+    "endereco_completo": ""
+  },
+  "crf_detalhes": {
+    "numero_certificacao": "",
+    "data_emissao": "",
+    "validade_inicio": "",
+    "validade_fim": "",
+    "uf_emissao": "",
+    "situacao_atual": "REGULAR" 
+  },
+  "pendencias_financeiras": {
+    "possui_debitos": false,
+    "resumo": {
+      "qtd_competencias": 0,
+      "valor_total_estimado": 0.0
+    },
+    "lista_debitos": [
+      {
+        "competencia": "",
+        "valor_original": 0.0,
+        "valor_atualizado": 0.0,
+        "situacao": "", 
+        "tipo_debito": "" 
+      }
+    ]
+  },
+  "mensagens_sistema": {
+    "texto_integral_certidao": "",
+    "avisos_importantes": []
+  }
+}

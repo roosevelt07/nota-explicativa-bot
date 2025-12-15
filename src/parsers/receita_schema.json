@@ -1,0 +1,84 @@
+{
+  "cadastral": {
+    "cnpj": "",
+    "razao_social": "",
+    "data_consulta": "",
+    "situacao_geral_relatorio": ""
+  },
+  "parcelamentos": {
+    "receita_simples": {
+      "ativo": false,
+      "parcelas_em_atraso": 0,
+      "descricao": ""
+    },
+    "pgfn_sispar": {
+      "encontrado": false,
+      "valor_consolidado": 0.0,
+      "data_consolidacao": ""
+    },
+    "outros_parcelamentos": []
+  },
+  "sief_receita": {
+    "linhas": [
+      {
+        "codigo": "",
+        "descricao_original": "",
+        "categoria": "", 
+        "periodo": "",
+        "vencimento": "",
+        "valor_consolidado": 0.0,
+        "situacao": ""
+      }
+    ],
+    "totais_por_categoria": {
+      "CP_PATRONAL": {
+        "valor": 0.0,
+        "qtd": 0
+      },
+      "CP_TERCEIROS": {
+        "valor": 0.0,
+        "qtd": 0
+      },
+      "SIMPLES_NACIONAL": {
+        "valor": 0.0,
+        "qtd": 0
+      },
+      "PIS": {
+        "valor": 0.0,
+        "qtd": 0
+      },
+      "COFINS": {
+        "valor": 0.0,
+        "qtd": 0
+      },
+      "IRPJ_CSLL": {
+        "valor": 0.0,
+        "qtd": 0
+      },
+      "OUTROS": {
+        "valor": 0.0,
+        "qtd": 0
+      }
+    },
+    "total_geral_sief": 0.0
+  },
+  "pgfn_divida_ativa": {
+    "inscricoes": [
+      {
+        "numero_inscricao": "",
+        "situacao": "",
+        "tipo": "", 
+        "valor_total": 0.0,
+        "descricao": ""
+      }
+    ],
+    "resumo": {
+      "total_simples_nacional": 0.0,
+      "total_geral_previdenciaria": 0.0
+    }
+  },
+  "resumo_executivo": {
+    "valor_total_divida": 0.0,
+    "principais_riscos": []
+  }
+}
