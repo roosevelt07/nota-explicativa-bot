@@ -189,21 +189,35 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     # ========================= RECEITA FEDERAL =========================
     story.append(Paragraph("RECEITA FEDERAL", heading))
     
-    # Tabela de Totais de Contribuições
+    # Total de Previdência (AJUSTE 2)
     if "receita_federal" in dados and dados["receita_federal"]:
         receita = dados["receita_federal"]
-        contribuicoes = receita.get("contribuicoes", {})
+        previdencia = receita.get("previdencia", {})
         
-        if contribuicoes and contribuicoes.get("total_geral", 0.0) > 0:
-            tabela_contrib = [
-                ["Tipo de Contribuição", "Valor Total"],
-                ["Seguro Total", _fmt_moeda(contribuicoes.get("seguro_total", 0.0))],
-                ["CP Patronal Total", _fmt_moeda(contribuicoes.get("patronal_total", 0.0))],
-                ["CP Terceiros Total", _fmt_moeda(contribuicoes.get("terceiros_total", 0.0))],
-                ["TOTAL DE CONTRIBUIÇÕES", _fmt_moeda(contribuicoes.get("total_geral", 0.0))]
-            ]
-            story.append(_make_table(tabela_contrib, col_widths=[200, 120], data_align="CENTER"))
+        if previdencia.get("existe") and previdencia.get("total_previdencia"):
+            story.append(Paragraph(f"<b>Total de Previdência:</b> {previdencia.get('total_previdencia')}", normal))
             story.append(Spacer(1, 8))
+        
+        # Receita CLT (AJUSTE 1)
+        receita_clt = receita.get("receita_clt", {})
+        if receita_clt.get("existe"):
+            codigo_clt = receita_clt.get("codigo", "N/A")
+            rotulo_clt = receita_clt.get("rotulo", "")
+            identificador = f"{rotulo_clt} {codigo_clt}".strip() if rotulo_clt else codigo_clt
+            
+            story.append(Paragraph(f"<b>Receita:</b> {identificador}", normal))
+            
+            # Informações adicionais do usuário (se houver)
+            manual = receita_clt.get("manual", {})
+            if manual and (manual.get("observacoes") or manual.get("campo_livre_1") or manual.get("campo_livre_2")):
+                story.append(Paragraph("<b>Informações adicionais (usuário):</b>", normal))
+                if manual.get("observacoes"):
+                    story.append(Paragraph(f"Observações: {manual.get('observacoes')}", normal))
+                if manual.get("campo_livre_1"):
+                    story.append(Paragraph(f"Campo livre 1: {manual.get('campo_livre_1')}", normal))
+                if manual.get("campo_livre_2"):
+                    story.append(Paragraph(f"Campo livre 2: {manual.get('campo_livre_2')}", normal))
+                story.append(Spacer(1, 6))
     
     story.append(Paragraph(dados["bloco_receita_federal"], normal))
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_rf']}", normal))

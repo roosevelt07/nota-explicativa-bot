@@ -153,6 +153,17 @@ def criar_schema_vazio() -> Dict[str, Any]:
                 "irls": [],
                 "pis": [],
                 "cofins": []
+            },
+            "receita_clt": {
+                "existe": False,
+                "codigo": None,
+                "rotulo": None,
+                "manual": {}
+            },
+            "previdencia": {
+                "existe": False,
+                "total_previdencia": None,
+                "fonte": "Receita Federal"
             }
         },
         "pgfn": {
@@ -713,6 +724,23 @@ def gerar_relatorio_consolidado(caminhos_pdf: List[Path | str]) -> Dict[str, Any
                         "parcelamentos": sispar_parcelamentos
                     },
                     "parcelamento_unificado": parcelamento_unificado
+                }
+                
+                # Receita CLT e Previdência
+                receita_clt = rf_data.get('receita_clt', {})
+                previdencia = rf_data.get('previdencia', {})
+                
+                relatorio["receita_federal"]["receita_clt"] = {
+                    "existe": receita_clt.get('existe', False),
+                    "codigo": receita_clt.get('codigo'),
+                    "rotulo": receita_clt.get('rotulo'),
+                    "manual": receita_clt.get('manual', {})
+                }
+                
+                relatorio["receita_federal"]["previdencia"] = {
+                    "existe": previdencia.get('existe', False),
+                    "total_previdencia": previdencia.get('total_previdencia'),
+                    "fonte": previdencia.get('fonte', 'Receita Federal')
                 }
         
         # SEFAZ
