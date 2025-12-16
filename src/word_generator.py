@@ -285,38 +285,75 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
 
     _add_heading(doc, "PARCELAMENTOS")
     
-    # SISPAR - Se houver dados estruturados
+    # SISPAR - Nova estrutura com parcelamentos
     if "receita_federal" in dados and dados["receita_federal"]:
         receita = dados["receita_federal"]
         sispar = receita.get("sispar", {})
         
         if sispar.get("tem_sispar"):
-            _add_heading(doc, "Parcelamento SISPAR")
-            detalhes = sispar.get("detalhes", [])
+            parcelamentos = sispar.get("parcelamentos", [])
             
-            if detalhes:
-                for item in detalhes:
-                    valor_total = item.get("valor_total")
-                    quantidade_parcelas = item.get("quantidade_parcelas")
-                    valor_parcela = item.get("valor_parcela")
-                    competencia = item.get("competencia")
+            for idx, parc in enumerate(parcelamentos):
+                titulo = f"Parcelamento SISPAR {idx + 1 if len(parcelamentos) > 1 else ''}"
+                _add_heading(doc, titulo)
+                
+                # Informações básicas extraídas do PDF
+                conta = parc.get("conta")
+                tipo = parc.get("tipo")
+                if conta:
+                    if tipo:
+                        _add_paragrafo(doc, f"Conta: {conta} {tipo}")
+                    else:
+                        _add_paragrafo(doc, f"Conta: {conta}")
+                
+                modalidade = parc.get("modalidade")
+                if modalidade:
+                    _add_paragrafo(doc, f"Modalidade: {modalidade}")
+                
+                regime = parc.get("regime")
+                if regime:
+                    _add_paragrafo(doc, f"Regime: {regime}")
+                
+                limite = parc.get("limite_maximo_meses")
+                if limite:
+                    _add_paragrafo(doc, f"Limite máximo: ATÉ {limite} MESES")
+                
+                negociado = parc.get("negociado_no_sispar")
+                if negociado is not None:
+                    _add_paragrafo(doc, f"Negociado no SISPAR: {'SIM' if negociado else 'NÃO'}")
+                
+                exigibilidade = parc.get("exigibilidade_suspensa")
+                if exigibilidade is not None:
+                    _add_paragrafo(doc, f"Exigibilidade suspensa: {'SIM' if exigibilidade else 'NÃO'}")
+                
+                doc.add_paragraph("")
+                
+                # Informações preenchidas manualmente (se houver)
+                qtd_parcelas = parc.get("quantidade_parcelas")
+                valor_total = parc.get("valor_total_parcelado")
+                valor_parcela = parc.get("valor_parcela")
+                competencias = parc.get("competencias", [])
+                
+                if qtd_parcelas or valor_total or valor_parcela or competencias:
+                    _add_paragrafo(doc, "Informações preenchidas manualmente:")
                     
-                    tabela_sispar_rows = []
-                    
+                    if qtd_parcelas:
+                        _add_paragrafo(doc, f"Quantidade de parcelas: {qtd_parcelas}")
                     if valor_total:
-                        tabela_sispar_rows.append(["Valor Total", _fmt_moeda_word(valor_total)])
-                    if quantidade_parcelas:
-                        tabela_sispar_rows.append(["Quantidade de Parcelas", str(quantidade_parcelas)])
+                        _add_paragrafo(doc, f"Valor total parcelado: {valor_total}")
                     if valor_parcela:
-                        tabela_sispar_rows.append(["Valor da Parcela", _fmt_moeda_word(valor_parcela)])
-                    if competencia:
-                        tabela_sispar_rows.append(["Competência", competencia])
+                        _add_paragrafo(doc, f"Valor da parcela: {valor_parcela}")
+                    if competencias:
+                        comps_str = ", ".join(competencias)
+                        _add_paragrafo(doc, f"Competências: {comps_str}")
                     
-                    if tabela_sispar_rows:
-                        _add_table(doc, ["Informação", "Valor"], tabela_sispar_rows)
-                        doc.add_paragraph("")
-            else:
-                _add_paragrafo(doc, "✅ Parcelamento SISPAR identificado (detalhes não disponíveis no documento).")
+                    _add_paragrafo(doc, "Status: INFORMADO PELO USUÁRIO")
+                else:
+                    # Observação de necessidade de consulta manual
+                    observacao = parc.get("observacao", "O relatório da Receita Federal não informa quantidade de parcelas, valores ou competências; é necessária consulta manual ao PGFN/SISPAR.")
+                    _add_paragrafo(doc, f"Observação: {observacao}")
+                    _add_paragrafo(doc, "Status: NECESSITA CONSULTA MANUAL")
+                
                 doc.add_paragraph("")
     
     # Parcelamentos manuais

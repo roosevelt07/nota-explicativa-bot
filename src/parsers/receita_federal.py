@@ -360,7 +360,7 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
         },
         'sispar': {
             'tem_sispar': False,
-            'detalhes': []
+            'parcelamentos': []  # Nova estrutura: lista de parcelamentos
         }
     }
     
@@ -514,113 +514,140 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
                 'situacao': situacao
             })
     
-    # SISPAR - Extração melhorada de valor total, quantidade de parcelas e valor da parcela
+    # SISPAR - Extração robusta e defensiva (NÃO infere valores/parcelas quando ausentes)
+    texto_original = texto  # Mantém original para preservar quebras de linha
     texto_normalizado = re.sub(r'\s+', ' ', texto)
     
-    # Padrões para detectar SISPAR
-    padroes_sispar = [
+    # A) Detectar início do bloco SISPAR
+    padroes_inicio = [
+        r'Pend[êe]ncia\s*[-–]\s*Parcelamento\s*\(?\s*SISPAR\s*\)?',
         r'Parcelamento\s*\(?\s*SISPAR\s*\)?',
-        r'NEGOCIADA\s+NO\s+SISPAR',
-        r'SISPAR',
-        r'Parcelamento\s+com\s+Exigibilidade\s+Suspensa\s*\(?\s*SISPAR\s*\)?'
+        r'Parcelamento\s+com\s+Exigibilidade\s+Suspensa\s*\(?\s*SISPAR\s*\)?',
+        r'NEGOCIADA\s+NO\s+SISPAR'
     ]
     
-    tem_sispar = False
-    for padrao in padroes_sispar:
-        if re.search(padrao, texto_normalizado, re.IGNORECASE):
-            tem_sispar = True
+    bloco_sispar = None
+    inicio_bloco = None
+    
+    for padrao in padroes_inicio:
+        match = re.search(padrao, texto_original, re.IGNORECASE)
+        if match:
+            inicio_bloco = match.start()
+            # Extrai bloco completo (até 2000 caracteres após o início)
+            fim_bloco = min(len(texto_original), match.end() + 2000)
+            bloco_sispar = texto_original[inicio_bloco:fim_bloco]
             break
     
-    if tem_sispar:
+    if bloco_sispar:
         resultado['sispar']['tem_sispar'] = True
+        bloco_normalizado = re.sub(r'\s+', ' ', bloco_sispar)
         
-        # Extrai contexto ao redor de SISPAR (até 500 caracteres antes e depois)
-        contexto_sispar = ""
-        for padrao in padroes_sispar:
-            match = re.search(padrao, texto_normalizado, re.IGNORECASE)
-            if match:
-                inicio = max(0, match.start() - 250)
-                fim = min(len(texto_normalizado), match.end() + 500)
-                contexto_sispar = texto_normalizado[inicio:fim]
-                break
+        # B) Extrair Conta e Tipo
+        # Padrão: "Conta" seguido de número (6-12 dígitos) e tipo
+        conta = None
+        tipo = None
         
-        if contexto_sispar:
-            # 1. Extrai valor total (procura por "R$", "valor", "total" seguido de número)
-            valor_total = None
-            padroes_valor = [
-                r'(?:valor\s+total|total|valor\s+consolidado|valor\s+do\s+parcelamento)[:\s]*R?\$?\s*(?P<valor>[\d\.]+,\d{2})',
-                r'R\$\s*(?P<valor>[\d\.]+,\d{2})(?:\s+.*?SISPAR|.*?parcelamento)',
-                r'SISPAR.*?R\$\s*(?P<valor>[\d\.]+,\d{2})',
-                r'(?P<valor>[\d\.]+,\d{2})(?:\s+.*?SISPAR|.*?parcelamento)'
-            ]
+        # Procura por "Conta" seguido de número
+        match_conta = re.search(
+            r'Conta\s+(?P<conta>\d{6,12})\s*(?P<tipo>[A-Z][A-Z\s\-]+)?',
+            bloco_sispar,
+            re.IGNORECASE | re.MULTILINE
+        )
+        
+        if match_conta:
+            conta_str = match_conta.group('conta')
+            tipo_str = match_conta.group('tipo')
             
-            for padrao_valor in padroes_valor:
-                match_valor = re.search(padrao_valor, contexto_sispar, re.IGNORECASE)
-                if match_valor:
-                    valor_str = match_valor.group('valor')
-                    if valor_str:
-                        valor_total = converter_valor_br_para_float(valor_str)
-                        if valor_total and valor_total > 0:
-                            break
-            
-            # 2. Extrai quantidade de parcelas
-            quantidade_parcelas = None
-            padroes_qtd = [
-                r'(?:quantidade|qtd|qtde|n[úu]mero|n\.?\s*de)\s*(?:de\s*)?parcelas?[:\s]*(?P<qtd>\d+)',
-                r'(?P<qtd>\d+)\s*(?:parcelas?|presta[çc][õo]es?)',
-                r'parcela\s+(?P<qtd>\d+)\s+de\s+\d+',
-                r'(?P<qtd>\d+)\s+vezes',
-                r'em\s+(?P<qtd>\d+)\s+parcelas?'
-            ]
-            
-            for padrao_qtd in padroes_qtd:
-                match_qtd = re.search(padrao_qtd, contexto_sispar, re.IGNORECASE)
-                if match_qtd:
-                    qtd_str = match_qtd.group('qtd')
-                    if qtd_str:
-                        try:
-                            quantidade_parcelas = int(qtd_str)
-                            if quantidade_parcelas > 0:
-                                break
-                        except ValueError:
-                            pass
-            
-            # 3. Extrai valor da parcela (se disponível)
-            valor_parcela = None
-            if quantidade_parcelas and valor_total:
-                # Calcula valor da parcela se tiver quantidade
-                valor_parcela = valor_total / quantidade_parcelas
-            else:
-                # Tenta extrair valor da parcela diretamente
-                padroes_parcela = [
-                    r'(?:valor\s+da\s+parcela|parcela\s+de|valor\s+parcela)[:\s]*R?\$?\s*(?P<valor>[\d\.]+,\d{2})',
-                    r'R\$\s*(?P<valor>[\d\.]+,\d{2})\s+por\s+parcela'
-                ]
-                for padrao_parcela in padroes_parcela:
-                    match_parcela = re.search(padrao_parcela, contexto_sispar, re.IGNORECASE)
-                    if match_parcela:
-                        valor_str = match_parcela.group('valor')
-                        if valor_str:
-                            valor_parcela = converter_valor_br_para_float(valor_str)
-                            if valor_parcela and valor_parcela > 0:
-                                break
-            
-            # 4. Extrai competência
-            competencia = None
-            match_comp = re.search(r'(\d{2}/\d{4})', contexto_sispar)
-            if match_comp:
-                competencia_raw = match_comp.group(1)
-                competencia = _normalizar_competencia(competencia_raw)
-            
-            # Adiciona detalhes do SISPAR
-            detalhe_sispar = {
-                'valor_total': valor_total,
-                'quantidade_parcelas': quantidade_parcelas,
-                'valor_parcela': valor_parcela,
-                'competencia': competencia
-            }
-            
-            resultado['sispar']['detalhes'].append(detalhe_sispar)
+            # Validação: conta deve ter 6-12 dígitos
+            if conta_str and 6 <= len(conta_str) <= 12:
+                conta = conta_str  # Preserva zeros à esquerda
+                if tipo_str and re.search(r'[A-Z]', tipo_str, re.IGNORECASE):
+                    tipo = _limpa(tipo_str).strip()
+        
+        # Se não encontrou no padrão acima, tenta padrão alternativo
+        if not conta:
+            # Procura linha que começa com número de 6-12 dígitos seguido de texto
+            linhas = bloco_sispar.split('\n')
+            for linha in linhas:
+                match_alt = re.match(r'^\s*(?P<conta>\d{6,12})\s+(?P<tipo>[A-Z][A-Z\s\-]+)', linha, re.IGNORECASE)
+                if match_alt:
+                    conta_str = match_alt.group('conta')
+                    if 6 <= len(conta_str) <= 12:
+                        conta = conta_str
+                        tipo_str = match_alt.group('tipo')
+                        if tipo_str and re.search(r'[A-Z]', tipo_str, re.IGNORECASE):
+                            tipo = _limpa(tipo_str).strip()
+                        break
+        
+        # C) Extrair Modalidade
+        modalidade = None
+        match_modalidade = re.search(
+            r'Modalidade[:\s]+(?P<modalidade>[^\n]+)',
+            bloco_sispar,
+            re.IGNORECASE
+        )
+        if match_modalidade:
+            modalidade = _limpa(match_modalidade.group('modalidade')).strip()
+        
+        # D) Extrair Regime
+        regime = None
+        bloco_upper = bloco_sispar.upper()
+        if 'SIMPLES' in bloco_upper and 'NACIONAL' in bloco_upper:
+            regime = "SIMPLES NACIONAL"
+        elif 'PREVIDENCIAR' in bloco_upper or 'PREVIDENCI[ÁA]RIA' in bloco_upper:
+            regime = "PREVIDENCIARIO"
+        elif 'NAO PREVIDENCIAR' in bloco_upper or 'NÃO PREVIDENCIAR' in bloco_upper or 'NÃO PREVIDENCIÁRIA' in bloco_upper:
+            regime = "NAO PREVIDENCIARIO"
+        
+        # E) Extrair limite máximo de meses
+        limite_maximo_meses = None
+        match_limite = re.search(
+            r'AT[EÉ]\s+(\d{1,3})\s+MESES',
+            bloco_normalizado,
+            re.IGNORECASE
+        )
+        if match_limite:
+            try:
+                limite = int(match_limite.group(1))
+                if 1 <= limite <= 240:  # Validação: máximo 240 meses
+                    limite_maximo_meses = limite
+            except ValueError:
+                pass
+        
+        # F) Flags
+        exigibilidade_suspensa = None
+        if re.search(r'EXIGIBILIDADE\s+SUSPENSA', bloco_normalizado, re.IGNORECASE):
+            exigibilidade_suspensa = True
+        elif re.search(r'EXIGIBILIDADE\s+(?:NÃO|NAO)\s+SUSPENSA', bloco_normalizado, re.IGNORECASE):
+            exigibilidade_suspensa = False
+        
+        negociado_no_sispar = None
+        if re.search(r'(?:NEGOCIADO|NEGOCIADA).*?SISPAR|SISPAR.*?(?:NEGOCIADO|NEGOCIADA)', bloco_normalizado, re.IGNORECASE):
+            negociado_no_sispar = True
+        
+        # G) Observação e flags de necessidade de consulta manual
+        necessita_consulta_manual_pgfn = True
+        observacao = "O relatório da Receita Federal não informa quantidade de parcelas, valores ou competências; é necessária consulta manual ao PGFN/SISPAR."
+        
+        # Monta o parcelamento
+        parcelamento = {
+            "conta": conta,
+            "tipo": tipo,
+            "modalidade": modalidade,
+            "regime": regime,
+            "limite_maximo_meses": limite_maximo_meses,
+            "negociado_no_sispar": negociado_no_sispar,
+            "exigibilidade_suspensa": exigibilidade_suspensa,
+            "quantidade_parcelas": None,  # PREENCHIMENTO MANUAL
+            "valor_total_parcelado": None,  # PREENCHIMENTO MANUAL
+            "valor_parcela": None,  # PREENCHIMENTO MANUAL
+            "competencias": [],  # PREENCHIMENTO MANUAL
+            "necessita_consulta_manual_pgfn": necessita_consulta_manual_pgfn,
+            "observacao": observacao,
+            "conferido_pelo_usuario": False  # Flag para UI
+        }
+        
+        resultado['sispar']['parcelamentos'] = [parcelamento]
     
     return resultado
 

@@ -346,39 +346,84 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     # ========================= PARCELAMENTOS =================
     story.append(Paragraph("PARCELAMENTOS", heading))
     
-    # SISPAR - Se houver dados estruturados
+    # SISPAR - Nova estrutura com parcelamentos
     if "receita_federal" in dados and dados["receita_federal"]:
         receita = dados["receita_federal"]
         sispar = receita.get("sispar", {})
         
         if sispar.get("tem_sispar"):
-            story.append(Paragraph("Parcelamento SISPAR", heading3))
-            detalhes = sispar.get("detalhes", [])
+            parcelamentos = sispar.get("parcelamentos", [])
             
-            if detalhes:
-                for item in detalhes:
-                    valor_total = item.get("valor_total")
-                    quantidade_parcelas = item.get("quantidade_parcelas")
-                    valor_parcela = item.get("valor_parcela")
-                    competencia = item.get("competencia")
+            for idx, parc in enumerate(parcelamentos):
+                story.append(Paragraph(f"Parcelamento SISPAR {idx + 1 if len(parcelamentos) > 1 else ''}", heading3))
+                
+                # Informações básicas extraídas do PDF
+                linhas_info = []
+                
+                conta = parc.get("conta")
+                tipo = parc.get("tipo")
+                if conta:
+                    if tipo:
+                        linhas_info.append(Paragraph(f"<b>Conta:</b> {conta} {tipo}", normal))
+                    else:
+                        linhas_info.append(Paragraph(f"<b>Conta:</b> {conta}", normal))
+                
+                modalidade = parc.get("modalidade")
+                if modalidade:
+                    linhas_info.append(Paragraph(f"<b>Modalidade:</b> {modalidade}", normal))
+                
+                regime = parc.get("regime")
+                if regime:
+                    linhas_info.append(Paragraph(f"<b>Regime:</b> {regime}", normal))
+                
+                limite = parc.get("limite_maximo_meses")
+                if limite:
+                    linhas_info.append(Paragraph(f"<b>Limite máximo:</b> ATÉ {limite} MESES", normal))
+                
+                negociado = parc.get("negociado_no_sispar")
+                if negociado is not None:
+                    linhas_info.append(Paragraph(f"<b>Negociado no SISPAR:</b> {'SIM' if negociado else 'NÃO'}", normal))
+                
+                exigibilidade = parc.get("exigibilidade_suspensa")
+                if exigibilidade is not None:
+                    linhas_info.append(Paragraph(f"<b>Exigibilidade suspensa:</b> {'SIM' if exigibilidade else 'NÃO'}", normal))
+                
+                for linha in linhas_info:
+                    story.append(linha)
+                
+                story.append(Spacer(1, 6))
+                
+                # Informações preenchidas manualmente (se houver)
+                qtd_parcelas = parc.get("quantidade_parcelas")
+                valor_total = parc.get("valor_total_parcelado")
+                valor_parcela = parc.get("valor_parcela")
+                competencias = parc.get("competencias", [])
+                
+                if qtd_parcelas or valor_total or valor_parcela or competencias:
+                    story.append(Paragraph("<b>Informações preenchidas manualmente:</b>", normal))
+                    linhas_manual = []
                     
-                    tabela_sispar_data = [["Informação", "Valor"]]
-                    
+                    if qtd_parcelas:
+                        linhas_manual.append(Paragraph(f"<b>Quantidade de parcelas:</b> {qtd_parcelas}", normal))
                     if valor_total:
-                        tabela_sispar_data.append(["Valor Total", _fmt_moeda(valor_total)])
-                    if quantidade_parcelas:
-                        tabela_sispar_data.append(["Quantidade de Parcelas", str(quantidade_parcelas)])
+                        linhas_manual.append(Paragraph(f"<b>Valor total parcelado:</b> {valor_total}", normal))
                     if valor_parcela:
-                        tabela_sispar_data.append(["Valor da Parcela", _fmt_moeda(valor_parcela)])
-                    if competencia:
-                        tabela_sispar_data.append(["Competência", competencia])
+                        linhas_manual.append(Paragraph(f"<b>Valor da parcela:</b> {valor_parcela}", normal))
+                    if competencias:
+                        comps_str = ", ".join(competencias)
+                        linhas_manual.append(Paragraph(f"<b>Competências:</b> {comps_str}", normal))
                     
-                    if len(tabela_sispar_data) > 1:  # Mais que apenas o cabeçalho
-                        story.append(_make_table(tabela_sispar_data, col_widths=[200, 120], data_align="CENTER"))
-                        story.append(Spacer(1, 8))
-            else:
-                story.append(Paragraph("✅ Parcelamento SISPAR identificado (detalhes não disponíveis no documento).", normal))
-                story.append(Spacer(1, 8))
+                    linhas_manual.append(Paragraph("<b>Status:</b> INFORMADO PELO USUÁRIO", normal))
+                    
+                    for linha in linhas_manual:
+                        story.append(linha)
+                else:
+                    # Observação de necessidade de consulta manual
+                    observacao = parc.get("observacao", "O relatório da Receita Federal não informa quantidade de parcelas, valores ou competências; é necessária consulta manual ao PGFN/SISPAR.")
+                    story.append(Paragraph(f"<b>Observação:</b> {observacao}", normal))
+                    story.append(Paragraph("<b>Status:</b> NECESSITA CONSULTA MANUAL", normal))
+                
+                story.append(Spacer(1, 10))
     
     # Parcelamentos manuais
     parcelamentos_rows = dados.get("parcelamentos_rows") or []

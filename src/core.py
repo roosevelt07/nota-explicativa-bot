@@ -23,6 +23,7 @@ from src.parsers.base import ResultadoParsers
 from src.parsers.receita_federal import interpretar_pdf_receita
 from src.parsers.sefaz import interpretar_pdf_sefaz
 from src.parsers.fgts import interpretar_pdf_fgts
+from src.utils import converter_valor_br_para_float
 
 
 # ==============================================================================
@@ -471,16 +472,25 @@ def consolidar_previdencia(resultados: List[Dict[str, Any]]) -> Dict[str, Any]:
             # SISPAR
             sispar = rf.get('sispar', {})
             if sispar.get('tem_sispar'):
-                for item in sispar.get('detalhes', []):
-                    valor = item.get('valor')
-                    if valor:
-                        previdencia_total += valor
-                    previdencia_itens.append({
-                        "fonte": "sispar",
-                        "tipo": "previdenciaria",
-                        "competencia": item.get('competencia'),
-                        "valor": valor
-                    })
+                for parc in sispar.get('parcelamentos', []):
+                    # Só adiciona à previdência se for regime previdenciário e tiver valor
+                    if parc.get('regime') == 'PREVIDENCIARIO':
+                        valor_total = parc.get('valor_total_parcelado')
+                        if valor_total:
+                            try:
+                                # Converte string "R$ 1.234,56" para float
+                                valor_float = converter_valor_br_para_float(valor_total) if isinstance(valor_total, str) else float(valor_total or 0)
+                                if valor_float > 0:
+                                    previdencia_total += valor_float
+                            except (ValueError, TypeError):
+                                pass
+                        previdencia_itens.append({
+                            "fonte": "sispar",
+                            "tipo": "previdenciaria",
+                            "conta": parc.get('conta'),
+                            "regime": parc.get('regime'),
+                            "valor": valor_total
+                        })
     
     return {
         "previdencia_total": previdencia_total,
@@ -647,27 +657,28 @@ def gerar_relatorio_consolidado(caminhos_pdf: List[Path | str]) -> Dict[str, Any
                         "tipo": "simples_nacional"
                     })
                 
-                # SISPAR
+                # SISPAR - Nova estrutura com parcelamentos
                 sispar = rf_data.get('sispar', {})
-                sispar_itens = []
-                sispar_observacao = None
+                sispar_parcelamentos = []
                 
                 if sispar.get('tem_sispar'):
-                    for item in sispar.get('detalhes', []):
-                        # Verifica se tem dados mínimos
-                        valor_total = item.get('valor_total') or item.get('valor')
-                        quantidade_parcelas = item.get('quantidade_parcelas')
-                        valor_parcela = item.get('valor_parcela')
-                        competencia = item.get('competencia')
-                        
-                        if not valor_total and not quantidade_parcelas and not competencia:
-                            sispar_observacao = "Layout do documento não traz informações detalhadas para SISPAR."
-                        
-                        sispar_itens.append({
-                            "competencia": competencia,
-                            "valor_total": valor_total,
-                            "quantidade_parcelas": quantidade_parcelas,
-                            "valor_parcela": valor_parcela
+                    for parc in sispar.get('parcelamentos', []):
+                        # Copia todos os campos do parcelamento
+                        sispar_parcelamentos.append({
+                            "conta": parc.get('conta'),
+                            "tipo": parc.get('tipo'),
+                            "modalidade": parc.get('modalidade'),
+                            "regime": parc.get('regime'),
+                            "limite_maximo_meses": parc.get('limite_maximo_meses'),
+                            "negociado_no_sispar": parc.get('negociado_no_sispar'),
+                            "exigibilidade_suspensa": parc.get('exigibilidade_suspensa'),
+                            "quantidade_parcelas": parc.get('quantidade_parcelas'),
+                            "valor_total_parcelado": parc.get('valor_total_parcelado'),
+                            "valor_parcela": parc.get('valor_parcela'),
+                            "competencias": parc.get('competencias', []),
+                            "necessita_consulta_manual_pgfn": parc.get('necessita_consulta_manual_pgfn', True),
+                            "observacao": parc.get('observacao'),
+                            "conferido_pelo_usuario": parc.get('conferido_pelo_usuario', False)
                         })
                 
                 # Parcelamento Unificado
@@ -699,8 +710,7 @@ def gerar_relatorio_consolidado(caminhos_pdf: List[Path | str]) -> Dict[str, Any
                     "inscricoes": inscricoes,
                     "sispar": {
                         "tem": sispar.get('tem_sispar', False),
-                        "itens": sispar_itens,
-                        "observacao": sispar_observacao
+                        "parcelamentos": sispar_parcelamentos
                     },
                     "parcelamento_unificado": parcelamento_unificado
                 }

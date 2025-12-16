@@ -274,9 +274,26 @@ def main() -> None:
                 if sispar.get('tem_sispar'):
                     st.markdown("#### SISPAR")
                     st.info("✅ Parcelamento SISPAR identificado")
-                    if sispar.get('detalhes'):
-                        df_sispar = pd.DataFrame(sispar['detalhes'])
-                        st.dataframe(df_sispar, use_container_width=True)
+                    parcelamentos = sispar.get('parcelamentos', [])
+                    if parcelamentos:
+                        for idx, parc in enumerate(parcelamentos):
+                            with st.expander(f"Parcelamento {idx + 1} - Conta: {parc.get('conta', 'N/A')}", expanded=True):
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.write(f"**Conta:** {parc.get('conta', '-')}")
+                                    st.write(f"**Tipo:** {parc.get('tipo', '-')}")
+                                    st.write(f"**Modalidade:** {parc.get('modalidade', '-')}")
+                                with col2:
+                                    st.write(f"**Regime:** {parc.get('regime', '-')}")
+                                    if parc.get('limite_maximo_meses'):
+                                        st.write(f"**Limite máximo:** ATÉ {parc.get('limite_maximo_meses')} MESES")
+                                    if parc.get('exigibilidade_suspensa') is not None:
+                                        st.write(f"**Exigibilidade suspensa:** {'SIM' if parc.get('exigibilidade_suspensa') else 'NÃO'}")
+                                    if parc.get('negociado_no_sispar') is not None:
+                                        st.write(f"**Negociado no SISPAR:** {'SIM' if parc.get('negociado_no_sispar') else 'NÃO'}")
+                                
+                                if parc.get('observacao'):
+                                    st.warning(parc.get('observacao'))
         
         # SEFAZ
         if hasattr(resultado, 'sefaz_estadual') and resultado.sefaz_estadual:
@@ -457,6 +474,76 @@ def main() -> None:
             placeholder="SIMPLES | R$ 1000 | Dia 20 | 60 | 10",
             height=80
         )
+
+        # --- Ajustes Manuais SISPAR ---
+        if resultado and getattr(resultado, "receita_federal", None):
+            receita = resultado.receita_federal
+            sispar = receita.get('sispar', {})
+            if sispar.get('tem_sispar'):
+                st.markdown("---")
+                st.subheader("Ajustes Manuais - SISPAR")
+                st.info("Preencha manualmente as informações que não constam no PDF (quantidade de parcelas, valores, competências)")
+                
+                parcelamentos = sispar.get('parcelamentos', [])
+                for idx, parc in enumerate(parcelamentos):
+                    with st.expander(f"Parcelamento SISPAR {idx + 1} - Conta: {parc.get('conta', 'N/A')}", expanded=False):
+                        col_qtd, col_valor_total, col_valor_parcela = st.columns(3)
+                        
+                        with col_qtd:
+                            qtd_parcelas = st.number_input(
+                                "Quantidade de Parcelas",
+                                min_value=1,
+                                max_value=240,
+                                value=parc.get('quantidade_parcelas') if parc.get('quantidade_parcelas') else None,
+                                key=f"sispar_qtd_{idx}"
+                            )
+                        
+                        with col_valor_total:
+                            valor_total_str = st.text_input(
+                                "Valor Total Parcelado (R$)",
+                                value=parc.get('valor_total_parcelado') if parc.get('valor_total_parcelado') else "",
+                                placeholder="R$ 1.234,56",
+                                key=f"sispar_valor_total_{idx}"
+                            )
+                        
+                        with col_valor_parcela:
+                            valor_parcela_str = st.text_input(
+                                "Valor da Parcela (R$)",
+                                value=parc.get('valor_parcela') if parc.get('valor_parcela') else "",
+                                placeholder="R$ 123,45",
+                                key=f"sispar_valor_parcela_{idx}"
+                            )
+                        
+                        competencias_str = st.text_area(
+                            "Competências (1 por linha: MM/AAAA ou AAAA-MM)",
+                            value="\n".join(parc.get('competencias', [])) if parc.get('competencias') else "",
+                            placeholder="01/2025\n02/2025\n03/2025",
+                            height=100,
+                            key=f"sispar_competencias_{idx}"
+                        )
+                        
+                        conferido = st.checkbox(
+                            "Marcar como conferido pelo usuário",
+                            value=parc.get('conferido_pelo_usuario', False),
+                            key=f"sispar_conferido_{idx}"
+                        )
+                        
+                        # Atualiza o parcelamento com os valores preenchidos
+                        if qtd_parcelas:
+                            parc['quantidade_parcelas'] = qtd_parcelas
+                        if valor_total_str:
+                            parc['valor_total_parcelado'] = valor_total_str
+                        if valor_parcela_str:
+                            parc['valor_parcela'] = valor_parcela_str
+                        if competencias_str:
+                            # Processa competências: uma por linha
+                            comps = [c.strip() for c in competencias_str.split('\n') if c.strip()]
+                            parc['competencias'] = comps
+                        parc['conferido_pelo_usuario'] = conferido
+                        
+                        if conferido or qtd_parcelas or valor_total_str or valor_parcela_str or competencias_str:
+                            parc['necessita_consulta_manual_pgfn'] = False
+                            parc['observacao'] = "Informações preenchidas manualmente pelo usuário."
 
         # --- Conclusão e Responsável ---
         st.subheader("4. Finalização")
