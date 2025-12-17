@@ -26,6 +26,7 @@ from src.core import montar_dados_relatorio, gerar_texto_relatorio, slugify
 from src.pdf_generator import gerar_pdf_bytes
 from src.word_generator import gerar_docx_bytes  # Generator de Word (opcional)
 from src.parsers import interpretar_todos      # Fachada dos parsers
+from src.utils import formatar_total_previdencia
 
 # ============================================================================
 # CONFIGURAÇÕES BÁSICAS DO PROJETO
@@ -146,7 +147,6 @@ def main() -> None:
         col1, col2, col3, col4, col5 = st.columns(5)
         
         # Receita Federal - Total de Previdência (OBJETIVO 3)
-        from src.utils import formatar_total_previdencia
         # Cria um dict temporário para usar a função utilitária
         dados_temp = {"receita_federal": resultado.receita_federal if hasattr(resultado, 'receita_federal') and resultado.receita_federal else {}}
         texto_total_previdencia = formatar_total_previdencia(dados_temp)
@@ -195,7 +195,6 @@ def main() -> None:
                 receita = resultado.receita_federal
                 
                 # Total de Previdência (OBJETIVO 3)
-                from src.utils import formatar_total_previdencia
                 dados_temp = {"receita_federal": receita}
                 texto_total_previdencia = formatar_total_previdencia(dados_temp)
                 st.markdown(f"#### 💰 {texto_total_previdencia}")

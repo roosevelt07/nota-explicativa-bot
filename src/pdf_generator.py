@@ -27,6 +27,8 @@ from reportlab.platypus import (
     TableStyle,
     PageBreak,
 )
+
+from src.utils import formatar_moeda, formatar_total_previdencia
 from reportlab.pdfgen import canvas as rl_canvas
 
 
@@ -190,7 +192,6 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     story.append(Paragraph("RECEITA FEDERAL", heading))
     
     # Total de Previdência (OBJETIVO 3) - SOMENTE o total, sem tabela completa
-    from src.utils import formatar_total_previdencia
     texto_total_previdencia = formatar_total_previdencia(dados)
     story.append(Paragraph(f"<b>{texto_total_previdencia}</b>", normal))
     story.append(Spacer(1, 8))

@@ -18,6 +18,7 @@ from typing import Dict, Any
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from src.utils import formatar_total_previdencia
 
 
 def _configurar_estilo_normal(doc: Document) -> None:
@@ -153,7 +154,6 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     _add_heading(doc, "RECEITA FEDERAL")
     
     # Total de Previdência (OBJETIVO 3) - SOMENTE o total, sem tabela completa
-    from src.utils import formatar_total_previdencia
     texto_total_previdencia = formatar_total_previdencia(dados)
     _add_paragrafo(doc, texto_total_previdencia)
     doc.add_paragraph("")
