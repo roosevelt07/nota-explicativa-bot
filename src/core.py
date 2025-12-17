@@ -153,6 +153,17 @@ def criar_schema_vazio() -> Dict[str, Any]:
                 "irls": [],
                 "pis": [],
                 "cofins": []
+            },
+            "pgfn_previdencia": {
+                "existe": False,
+                "receitas": [],
+                "origem_secao": None,
+                "informacoes_adicionais_usuario": ""
+            },
+            "previdencia": {
+                "existe": False,
+                "total_previdencia": None,
+                "fonte": "Receita Federal"
             }
         },
         "pgfn": {
@@ -713,6 +724,23 @@ def gerar_relatorio_consolidado(caminhos_pdf: List[Path | str]) -> Dict[str, Any
                         "parcelamentos": sispar_parcelamentos
                     },
                     "parcelamento_unificado": parcelamento_unificado
+                }
+                
+                # PGFN Previdência e Total de Previdência
+                pgfn_previdencia = rf_data.get('pgfn_previdencia', {})
+                previdencia = rf_data.get('previdencia', {})
+                
+                relatorio["receita_federal"]["pgfn_previdencia"] = {
+                    "existe": pgfn_previdencia.get('existe', False),
+                    "receitas": pgfn_previdencia.get('receitas', []),
+                    "origem_secao": pgfn_previdencia.get('origem_secao'),
+                    "informacoes_adicionais_usuario": pgfn_previdencia.get('informacoes_adicionais_usuario', '')
+                }
+                
+                relatorio["receita_federal"]["previdencia"] = {
+                    "existe": previdencia.get('existe', False),
+                    "total_previdencia": previdencia.get('total_previdencia'),
+                    "fonte": previdencia.get('fonte', 'Receita Federal')
                 }
         
         # SEFAZ

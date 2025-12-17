@@ -144,27 +144,17 @@ def main() -> None:
         # Cards de Totais
         col1, col2, col3, col4, col5 = st.columns(5)
         
-        # Receita Federal - Contribuições
-        contribuicoes = {}
+        # Receita Federal - Total de Previdência (OBJETIVO 3)
+        total_previdencia_str = None
         if hasattr(resultado, 'receita_federal') and resultado.receita_federal:
-            contribuicoes = resultado.receita_federal.get('contribuicoes', {})
-        
-        total_seguro = contribuicoes.get('seguro_total', 0.0)
-        total_patronal = contribuicoes.get('patronal_total', 0.0)
-        total_terceiros = contribuicoes.get('terceiros_total', 0.0)
-        total_geral_contrib = contribuicoes.get('total_geral', 0.0)
+            previdencia = resultado.receita_federal.get('previdencia', {})
+            total_previdencia_str = previdencia.get('total_previdencia')
         
         with col1:
-            st.metric("Seguro (Total)", f"R$ {total_seguro:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        
-        with col2:
-            st.metric("CP Patronal (Total)", f"R$ {total_patronal:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        
-        with col3:
-            st.metric("CP Terceiros (Total)", f"R$ {total_terceiros:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-        
-        with col4:
-            st.metric("Total Contribuições", f"R$ {total_geral_contrib:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            if total_previdencia_str:
+                st.metric("Total de Previdência", total_previdencia_str)
+            else:
+                st.metric("Total de Previdência", "não identificado")
         
         # SEFAZ - Situação e Total
         situacao_sefaz = "N/A"
@@ -204,14 +194,14 @@ def main() -> None:
             with st.expander("🏛️ Receita Federal - Detalhes", expanded=False):
                 receita = resultado.receita_federal
                 
-                # Contribuições - Resumo
-                contribuicoes = receita.get('contribuicoes', {})
-                if contribuicoes and contribuicoes.get('total_geral', 0.0) > 0:
-                    st.markdown("#### 💰 Resumo de Contribuições")
-                    st.markdown(f"- **Seguro Total:** R$ {contribuicoes.get('seguro_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-                    st.markdown(f"- **Patronal Total:** R$ {contribuicoes.get('patronal_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-                    st.markdown(f"- **Terceiros Total:** R$ {contribuicoes.get('terceiros_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-                    st.markdown(f"**Total Geral de Contribuições: R$ {contribuicoes.get('total_geral', 0.0):,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
+                # Total de Previdência (OBJETIVO 3)
+                previdencia = receita.get('previdencia', {})
+                if previdencia.get('existe') and previdencia.get('total_previdencia'):
+                    st.markdown("#### 💰 Total de Previdência")
+                    st.markdown(f"**{previdencia.get('total_previdencia')}**")
+                elif previdencia.get('existe') == False:
+                    st.markdown("#### 💰 Total de Previdência")
+                    st.markdown("**não identificado**")
                 
                 # CP Seguro (renomeado de CP Segurados)
                 cp_seguro = receita.get('cp_seguro', {})
@@ -268,6 +258,25 @@ def main() -> None:
                         st.markdown("**Simples Nacional:**")
                         df_sn = pd.DataFrame(pgfn['simples_nacional'])
                         st.dataframe(df_sn, use_container_width=True)
+                
+                # PGFN Previdência (OBJETIVO 1)
+                pgfn_previdencia = receita.get('pgfn_previdencia', {})
+                if pgfn_previdencia.get('existe'):
+                    st.markdown("#### PGFN Previdência")
+                    receitas_list = pgfn_previdencia.get('receitas', [])
+                    receitas_str = '; '.join(receitas_list) if receitas_list else "Não identificado"
+                    
+                    # Tabelinha
+                    df_pgfn_prev = pd.DataFrame({
+                        "Campo": ["Receita", "Informações adicionais"],
+                        "Valor": [receitas_str, pgfn_previdencia.get('informacoes_adicionais_usuario', '')]
+                    })
+                    st.table(df_pgfn_prev)
+                    st.info("💡 Use a seção 'Ajustes Manuais - PGFN Previdência' no formulário abaixo para editar as informações adicionais.")
+                elif pgfn_previdencia:
+                    # Se existe mas não tem receitas, mostra "Não identificado"
+                    st.markdown("#### PGFN Previdência")
+                    st.info("Não identificado")
                 
                 # SISPAR
                 sispar = receita.get('sispar', {})
@@ -475,6 +484,29 @@ def main() -> None:
             height=80
         )
 
+        # --- Ajustes Manuais PGFN Previdência ---
+        if resultado and getattr(resultado, "receita_federal", None):
+            receita = resultado.receita_federal
+            pgfn_previdencia = receita.get('pgfn_previdencia', {})
+            if pgfn_previdencia.get('existe'):
+                st.markdown("---")
+                st.subheader("Ajustes Manuais - PGFN Previdência")
+                
+                receitas_list = pgfn_previdencia.get('receitas', [])
+                receitas_str = '; '.join(receitas_list) if receitas_list else "Não identificado"
+                st.info(f"Receita detectada automaticamente: {receitas_str}")
+                
+                info_adicional = st.text_area(
+                    "Informações adicionais",
+                    value=pgfn_previdencia.get('informacoes_adicionais_usuario', ''),
+                    key="pgfn_prev_info_adicional",
+                    height=100,
+                    help="Preencha informações adicionais sobre o PGFN Previdência"
+                )
+                
+                # Atualiza o objeto diretamente (será salvo no form_data)
+                pgfn_previdencia['informacoes_adicionais_usuario'] = info_adicional
+        
         # --- Ajustes Manuais SISPAR ---
         if resultado and getattr(resultado, "receita_federal", None):
             receita = resultado.receita_federal
@@ -615,6 +647,12 @@ def main() -> None:
                 form_data["fgts"] = resultado.fgts
             
             if getattr(resultado, "receita_federal", None):
+                # Atualiza informações adicionais do PGFN Previdência se foi preenchido no formulário
+                if 'pgfn_previdencia_info' in st.session_state:
+                    if not resultado.receita_federal.get('pgfn_previdencia'):
+                        resultado.receita_federal['pgfn_previdencia'] = {}
+                    resultado.receita_federal['pgfn_previdencia']['informacoes_adicionais_usuario'] = st.session_state['pgfn_previdencia_info']
+                
                 form_data["receita_federal"] = resultado.receita_federal
 
         # Processamento Final (Core)

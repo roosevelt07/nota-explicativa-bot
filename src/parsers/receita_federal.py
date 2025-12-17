@@ -361,6 +361,17 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
         'sispar': {
             'tem_sispar': False,
             'parcelamentos': []  # Nova estrutura: lista de parcelamentos
+        },
+        'pgfn_previdencia': {
+            'existe': False,
+            'receitas': [],
+            'origem_secao': None,
+            'informacoes_adicionais_usuario': ''
+        },
+        'previdencia': {
+            'existe': False,
+            'total_previdencia': None,
+            'fonte': 'Receita Federal'
         }
     }
     
@@ -648,6 +659,79 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
         }
         
         resultado['sispar']['parcelamentos'] = [parcelamento]
+    
+    # OBJETIVO 1: Extração de PGFN Previdência (SIDA) - NÃO é SISPAR
+    texto_linhas = texto.split('\n')
+    receitas_encontradas = []
+    origem_secao = None
+    
+    # Procura por seções SIDA
+    padroes_sida = [
+        r'Pend[êe]ncia\s*[-–]\s*Inscri[çc][ãa]o\s*\(?\s*SIDA\s*\)?',
+        r'Inscri[çc][ãa]o\s+com\s+Exigibilidade\s+Suspensa\s*\(?\s*SIDA\s*\)?',
+        r'Inscri[çc][ãa]o\s*\(?\s*SIDA\s*\)?'
+    ]
+    
+    bloco_sida = None
+    for i, linha in enumerate(texto_linhas):
+        for padrao in padroes_sida:
+            if re.search(padrao, linha, re.IGNORECASE):
+                origem_secao = linha.strip()
+                # Extrai bloco da seção (até 50 linhas após ou até próxima seção)
+                bloco_sida = '\n'.join(texto_linhas[i:min(i+50, len(texto_linhas))])
+                break
+        if bloco_sida:
+            break
+    
+    if bloco_sida:
+        # Procura todas as receitas no formato XXXX-CLT
+        padrao_receita = r'\b(\d{4}-CLT)\b'
+        matches = re.finditer(padrao_receita, bloco_sida, re.IGNORECASE)
+        
+        for match in matches:
+            receita = match.group(1).upper()  # Normaliza para maiúsculas
+            if receita not in receitas_encontradas:
+                receitas_encontradas.append(receita)
+        
+        if receitas_encontradas:
+            resultado['pgfn_previdencia']['existe'] = True
+            resultado['pgfn_previdencia']['receitas'] = receitas_encontradas
+            resultado['pgfn_previdencia']['origem_secao'] = origem_secao
+    
+    # OBJETIVO 2: Extração do TOTAL DE CONTRIBUIÇÕES (para mostrar como "Total de Previdência")
+    total_previdencia = None
+    
+    for i, linha in enumerate(texto_linhas):
+        linha_upper = linha.upper()
+        
+        # Procura por "TOTAL DE CONTRIBUIÇÕES" ou variações
+        if re.search(r'TOTAL\s+(?:DE\s+)?CONTRIBUI[ÇC][ÕO]ES', linha_upper):
+            # Tenta extrair valor da mesma linha
+            match_valor = re.search(r'R\$\s*([\d\.]+,\d{2})|([\d\.]+,\d{2})', linha)
+            if match_valor:
+                valor_str = match_valor.group(1) or match_valor.group(2)
+                if valor_str and valor_str.strip() not in ['-', '']:
+                    # Formata como "R$ X.XXX,XX"
+                    valor_float = converter_valor_br_para_float(valor_str)
+                    if valor_float > 0:
+                        total_previdencia = f"R$ {valor_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            else:
+                # Se não encontrou na mesma linha, tenta linha seguinte
+                if i + 1 < len(texto_linhas):
+                    linha_seguinte = texto_linhas[i + 1]
+                    match_valor = re.search(r'R\$\s*([\d\.]+,\d{2})|([\d\.]+,\d{2})', linha_seguinte)
+                    if match_valor:
+                        valor_str = match_valor.group(1) or match_valor.group(2)
+                        if valor_str and valor_str.strip() not in ['-', '']:
+                            valor_float = converter_valor_br_para_float(valor_str)
+                            if valor_float > 0:
+                                total_previdencia = f"R$ {valor_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            break
+    
+    if total_previdencia:
+        resultado['previdencia']['existe'] = True
+        resultado['previdencia']['total_previdencia'] = total_previdencia
     
     return resultado
 

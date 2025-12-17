@@ -189,21 +189,31 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     # ========================= RECEITA FEDERAL =========================
     story.append(Paragraph("RECEITA FEDERAL", heading))
     
-    # Tabela de Totais de Contribuições
+    # Total de Previdência (OBJETIVO 3) - SOMENTE o total, sem tabela completa
     if "receita_federal" in dados and dados["receita_federal"]:
         receita = dados["receita_federal"]
-        contribuicoes = receita.get("contribuicoes", {})
+        previdencia = receita.get("previdencia", {})
         
-        if contribuicoes and contribuicoes.get("total_geral", 0.0) > 0:
-            tabela_contrib = [
-                ["Tipo de Contribuição", "Valor Total"],
-                ["Seguro Total", _fmt_moeda(contribuicoes.get("seguro_total", 0.0))],
-                ["CP Patronal Total", _fmt_moeda(contribuicoes.get("patronal_total", 0.0))],
-                ["CP Terceiros Total", _fmt_moeda(contribuicoes.get("terceiros_total", 0.0))],
-                ["TOTAL DE CONTRIBUIÇÕES", _fmt_moeda(contribuicoes.get("total_geral", 0.0))]
-            ]
-            story.append(_make_table(tabela_contrib, col_widths=[200, 120], data_align="CENTER"))
-            story.append(Spacer(1, 8))
+        if previdencia.get("existe") and previdencia.get("total_previdencia"):
+            story.append(Paragraph(f"<b>Total de Previdência:</b> {previdencia.get('total_previdencia')}", normal))
+        else:
+            story.append(Paragraph("<b>Total de Previdência:</b> não identificado", normal))
+        story.append(Spacer(1, 8))
+        
+        # PGFN Previdência (OBJETIVO 1)
+        pgfn_previdencia = receita.get("pgfn_previdencia", {})
+        if pgfn_previdencia.get("existe"):
+            receitas_list = pgfn_previdencia.get("receitas", [])
+            receitas_str = "; ".join(receitas_list) if receitas_list else "Não identificado"
+            
+            story.append(Paragraph("<b>PGFN Previdência</b>", normal))
+            story.append(Paragraph(f"Receita: {receitas_str}", normal))
+            
+            info_adicional = pgfn_previdencia.get("informacoes_adicionais_usuario", "")
+            if info_adicional:
+                story.append(Paragraph(f"Informações adicionais: {info_adicional}", normal))
+            
+            story.append(Spacer(1, 6))
     
     story.append(Paragraph(dados["bloco_receita_federal"], normal))
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_rf']}", normal))

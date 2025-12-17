@@ -152,19 +152,31 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
 
     _add_heading(doc, "RECEITA FEDERAL")
     
-    # Tabela de Totais de Contribuições
+    # Total de Previdência (OBJETIVO 3) - SOMENTE o total, sem tabela completa
     if "receita_federal" in dados and dados["receita_federal"]:
         receita = dados["receita_federal"]
-        contribuicoes = receita.get("contribuicoes", {})
+        previdencia = receita.get("previdencia", {})
         
-        if contribuicoes and contribuicoes.get("total_geral", 0.0) > 0:
-            tabela_contrib_rows = [
-                ["Seguro Total", _fmt_moeda_word(contribuicoes.get("seguro_total", 0.0))],
-                ["CP Patronal Total", _fmt_moeda_word(contribuicoes.get("patronal_total", 0.0))],
-                ["CP Terceiros Total", _fmt_moeda_word(contribuicoes.get("terceiros_total", 0.0))],
-                ["TOTAL DE CONTRIBUIÇÕES", _fmt_moeda_word(contribuicoes.get("total_geral", 0.0))]
-            ]
-            _add_table(doc, ["Tipo de Contribuição", "Valor Total"], tabela_contrib_rows)
+        if previdencia.get("existe") and previdencia.get("total_previdencia"):
+            _add_paragrafo(doc, f"Total de Previdência: {previdencia.get('total_previdencia')}")
+        else:
+            _add_paragrafo(doc, "Total de Previdência: não identificado")
+        doc.add_paragraph("")
+        
+        # PGFN Previdência (OBJETIVO 1)
+        pgfn_previdencia = receita.get("pgfn_previdencia", {})
+        if pgfn_previdencia.get("existe"):
+            receitas_list = pgfn_previdencia.get("receitas", [])
+            receitas_str = "; ".join(receitas_list) if receitas_list else "Não identificado"
+            
+            _add_paragrafo(doc, "PGFN Previdência")
+            _add_paragrafo(doc, f"Receita: {receitas_str}")
+            
+            info_adicional = pgfn_previdencia.get("informacoes_adicionais_usuario", "")
+            if info_adicional:
+                _add_paragrafo(doc, f"Informações adicionais: {info_adicional}")
+            
+            doc.add_paragraph("")
     
     _add_paragrafo(doc, dados.get("bloco_receita_federal", ""))
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_rf']}")
