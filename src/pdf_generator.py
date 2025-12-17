@@ -329,6 +329,8 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     story.append(Spacer(1, 10))
 
     # ============================ FGTS ================================
+    # Força o FGTS a começar na página 2
+    story.append(PageBreak())
     story.append(Paragraph("FGTS", heading))
     
     # Lógica Híbrida: Usa dados estruturados se disponíveis, senão usa texto bloco
