@@ -497,7 +497,7 @@ def main() -> None:
                 receitas_str = '; '.join(receitas_list) if receitas_list else "Não identificado"
                 st.info(f"Receita detectada automaticamente: {receitas_str}")
                 
-                # Recupera valor do session_state se existir, senão usa o valor do objeto
+                # Usa key= para persistência automática - não precisa salvar manualmente no session_state
                 valor_inicial = st.session_state.get('pgfn_prev_info_adicional', pgfn_previdencia.get('informacoes_adicionais_usuario', ''))
                 
                 info_adicional = st.text_area(
@@ -508,11 +508,7 @@ def main() -> None:
                     help="Preencha informações adicionais sobre o PGFN Previdência"
                 )
                 
-                # Salva no session_state para persistir entre reruns
-                st.session_state['pgfn_prev_info_adicional'] = info_adicional
-                
-                # Atualiza o objeto diretamente (será salvo no form_data)
-                pgfn_previdencia['informacoes_adicionais_usuario'] = info_adicional
+                # NÃO salva no session_state aqui - será feito apenas quando o form for submetido
         
         # --- Ajustes Manuais SISPAR ---
         if resultado and getattr(resultado, "receita_federal", None):
@@ -567,22 +563,8 @@ def main() -> None:
                             key=f"sispar_conferido_{idx}"
                         )
                         
-                        # Atualiza o parcelamento com os valores preenchidos
-                        if qtd_parcelas:
-                            parc['quantidade_parcelas'] = qtd_parcelas
-                        if valor_total_str:
-                            parc['valor_total_parcelado'] = valor_total_str
-                        if valor_parcela_str:
-                            parc['valor_parcela'] = valor_parcela_str
-                        if competencias_str:
-                            # Processa competências: uma por linha
-                            comps = [c.strip() for c in competencias_str.split('\n') if c.strip()]
-                            parc['competencias'] = comps
-                        parc['conferido_pelo_usuario'] = conferido
-                        
-                        if conferido or qtd_parcelas or valor_total_str or valor_parcela_str or competencias_str:
-                            parc['necessita_consulta_manual_pgfn'] = False
-                            parc['observacao'] = "Informações preenchidas manualmente pelo usuário."
+                        # NÃO atualiza o objeto aqui - será feito apenas quando o form for submetido
+                        # Os valores são salvos automaticamente no session_state pelos inputs com key=
 
         # --- Conclusão e Responsável ---
         st.subheader("4. Finalização")
@@ -661,16 +643,37 @@ def main() -> None:
                 if not receita_federal_copy.get('pgfn_previdencia'):
                     receita_federal_copy['pgfn_previdencia'] = {}
                 
-                # Atualiza informações adicionais do PGFN Previdência se foi preenchido no formulário
-                # O valor já foi salvo no session_state pelo st.text_area quando o formulário foi submetido
-                if 'pgfn_prev_info_adicional' in st.session_state:
-                    receita_federal_copy['pgfn_previdencia']['informacoes_adicionais_usuario'] = st.session_state['pgfn_prev_info_adicional']
-                elif receita_federal_copy.get('pgfn_previdencia', {}).get('informacoes_adicionais_usuario'):
-                    # Se já existe no objeto, mantém
-                    pass
-                else:
-                    # Inicializa vazio se não existir
-                    receita_federal_copy['pgfn_previdencia']['informacoes_adicionais_usuario'] = ''
+                # Atualiza informações adicionais do PGFN Previdência do session_state (preenchido no form)
+                # O valor foi salvo automaticamente no session_state pelo st.text_area com key=
+                info_adicional = st.session_state.get('pgfn_prev_info_adicional', '')
+                receita_federal_copy['pgfn_previdencia']['informacoes_adicionais_usuario'] = info_adicional if info_adicional else ''
+                
+                # Atualiza também os dados do SISPAR se foram preenchidos
+                sispar = receita_federal_copy.get('sispar', {})
+                if sispar.get('tem_sispar'):
+                    parcelamentos = sispar.get('parcelamentos', [])
+                    for idx, parc in enumerate(parcelamentos):
+                        # Captura valores do session_state
+                        qtd_key = f"sispar_qtd_{idx}"
+                        valor_total_key = f"sispar_valor_total_{idx}"
+                        valor_parcela_key = f"sispar_valor_parcela_{idx}"
+                        competencias_key = f"sispar_competencias_{idx}"
+                        conferido_key = f"sispar_conferido_{idx}"
+                        
+                        if qtd_key in st.session_state:
+                            parc['quantidade_parcelas'] = st.session_state[qtd_key]
+                        if valor_total_key in st.session_state:
+                            parc['valor_total_parcelado'] = st.session_state[valor_total_key]
+                        if valor_parcela_key in st.session_state:
+                            parc['valor_parcela'] = st.session_state[valor_parcela_key]
+                        if competencias_key in st.session_state:
+                            comps = [c.strip() for c in st.session_state[competencias_key].split('\n') if c.strip()]
+                            parc['competencias'] = comps
+                        if conferido_key in st.session_state:
+                            parc['conferido_pelo_usuario'] = st.session_state[conferido_key]
+                            if st.session_state[conferido_key]:
+                                parc['necessita_consulta_manual_pgfn'] = False
+                                parc['observacao'] = "Informações preenchidas manualmente pelo usuário."
                 
                 # Garante que o objeto receita_federal tenha a estrutura completa atualizada
                 form_data["receita_federal"] = receita_federal_copy

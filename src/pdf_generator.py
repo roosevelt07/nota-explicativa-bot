@@ -217,6 +217,9 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
                 for linha in info_adicional.split('\n'):
                     if linha.strip():
                         story.append(Paragraph(linha.strip(), normal))
+            else:
+                # Se não houver informações, mostra "(não informado)"
+                story.append(Paragraph("<b>Informações adicionais:</b> (não informado)", normal))
             
             story.append(Spacer(1, 6))
     

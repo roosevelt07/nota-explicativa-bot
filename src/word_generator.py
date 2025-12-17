@@ -179,6 +179,9 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
                 for linha in info_adicional.split('\n'):
                     if linha.strip():
                         _add_paragrafo(doc, linha.strip())
+            else:
+                # Se não houver informações, mostra "(não informado)"
+                _add_paragrafo(doc, "Informações adicionais: (não informado)")
             
             doc.add_paragraph("")
     
