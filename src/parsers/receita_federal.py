@@ -361,16 +361,6 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
         'sispar': {
             'tem_sispar': False,
             'parcelamentos': []  # Nova estrutura: lista de parcelamentos
-        },
-        'receita_clt': {
-            'existe': False,
-            'codigo': None,
-            'rotulo': None
-        },
-        'previdencia': {
-            'existe': False,
-            'total_previdencia': None,
-            'fonte': 'Receita Federal'
         }
     }
     
@@ -658,79 +648,6 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
         }
         
         resultado['sispar']['parcelamentos'] = [parcelamento]
-    
-    # AJUSTE 1: Detecção de "Receita 3623-CLT"
-    texto_normalizado_clt = re.sub(r'\s+', ' ', texto)
-    
-    # Padrões para detectar "Receita 3623-CLT"
-    # Aceita: "3623-CLT", "3623 CLT", "3623–CLT" (hífen normal ou travessão)
-    padroes_receita_clt = [
-        r'Receita\s+(?P<codigo>3623[-\s–]CLT)',
-        r'(?P<codigo>3623[-\s–]CLT)\s*Receita',
-        r'(?P<codigo>3623[-\s–]CLT)',
-    ]
-    
-    codigo_encontrado = None
-    rotulo_encontrado = None
-    
-    for padrao in padroes_receita_clt:
-        match = re.search(padrao, texto_normalizado_clt, re.IGNORECASE)
-        if match:
-            codigo_raw = match.group('codigo')
-            # Normaliza o código (remove espaços extras, padroniza hífen)
-            codigo_encontrado = re.sub(r'\s+', '', codigo_raw.upper()).replace('–', '-')
-            
-            # Verifica se "Receita" está no contexto (linha anterior ou mesma linha)
-            contexto_inicio = max(0, match.start() - 50)
-            contexto_fim = min(len(texto_normalizado_clt), match.end() + 50)
-            contexto = texto_normalizado_clt[contexto_inicio:contexto_fim]
-            
-            if re.search(r'\bReceita\b', contexto, re.IGNORECASE):
-                rotulo_encontrado = "Receita"
-            
-            break
-    
-    # Regras defensivas: se achar código, marca existe (mesmo sem "Receita")
-    if codigo_encontrado:
-        resultado['receita_clt']['existe'] = True
-        resultado['receita_clt']['codigo'] = codigo_encontrado
-        resultado['receita_clt']['rotulo'] = rotulo_encontrado
-    
-    # AJUSTE 2: Extração do TOTAL DE CONTRIBUIÇÕES (apenas o total)
-    texto_linhas = texto.split('\n')
-    total_previdencia = None
-    
-    for i, linha in enumerate(texto_linhas):
-        linha_upper = linha.upper()
-        
-        # Procura por "TOTAL DE CONTRIBUIÇÕES" ou variações
-        if re.search(r'TOTAL\s+(?:DE\s+)?CONTRIBUI[ÇC][ÕO]ES', linha_upper):
-            # Tenta extrair valor da mesma linha
-            match_valor = re.search(r'R\$\s*([\d\.]+,\d{2})|([\d\.]+,\d{2})', linha)
-            if match_valor:
-                valor_str = match_valor.group(1) or match_valor.group(2)
-                if valor_str and valor_str.strip() not in ['-', '']:
-                    # Formata como "R$ X.XXX,XX"
-                    valor_float = converter_valor_br_para_float(valor_str)
-                    if valor_float > 0:
-                        total_previdencia = f"R$ {valor_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            else:
-                # Se não encontrou na mesma linha, tenta linha seguinte
-                if i + 1 < len(texto_linhas):
-                    linha_seguinte = texto_linhas[i + 1]
-                    match_valor = re.search(r'R\$\s*([\d\.]+,\d{2})|([\d\.]+,\d{2})', linha_seguinte)
-                    if match_valor:
-                        valor_str = match_valor.group(1) or match_valor.group(2)
-                        if valor_str and valor_str.strip() not in ['-', '']:
-                            valor_float = converter_valor_br_para_float(valor_str)
-                            if valor_float > 0:
-                                total_previdencia = f"R$ {valor_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            
-            break
-    
-    if total_previdencia:
-        resultado['previdencia']['existe'] = True
-        resultado['previdencia']['total_previdencia'] = total_previdencia
     
     return resultado
 

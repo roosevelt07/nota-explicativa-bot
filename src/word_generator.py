@@ -152,35 +152,19 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
 
     _add_heading(doc, "RECEITA FEDERAL")
     
-    # Total de Previdência (AJUSTE 2)
+    # Tabela de Totais de Contribuições
     if "receita_federal" in dados and dados["receita_federal"]:
         receita = dados["receita_federal"]
-        previdencia = receita.get("previdencia", {})
+        contribuicoes = receita.get("contribuicoes", {})
         
-        if previdencia.get("existe") and previdencia.get("total_previdencia"):
-            _add_paragrafo(doc, f"Total de Previdência: {previdencia.get('total_previdencia')}")
-            doc.add_paragraph("")
-        
-        # Receita CLT (AJUSTE 1)
-        receita_clt = receita.get("receita_clt", {})
-        if receita_clt.get("existe"):
-            codigo_clt = receita_clt.get("codigo", "N/A")
-            rotulo_clt = receita_clt.get("rotulo", "")
-            identificador = f"{rotulo_clt} {codigo_clt}".strip() if rotulo_clt else codigo_clt
-            
-            _add_paragrafo(doc, f"Receita: {identificador}")
-            
-            # Informações adicionais do usuário (se houver)
-            manual = receita_clt.get("manual", {})
-            if manual and (manual.get("observacoes") or manual.get("campo_livre_1") or manual.get("campo_livre_2")):
-                _add_paragrafo(doc, "Informações adicionais (usuário):")
-                if manual.get("observacoes"):
-                    _add_paragrafo(doc, f"Observações: {manual.get('observacoes')}")
-                if manual.get("campo_livre_1"):
-                    _add_paragrafo(doc, f"Campo livre 1: {manual.get('campo_livre_1')}")
-                if manual.get("campo_livre_2"):
-                    _add_paragrafo(doc, f"Campo livre 2: {manual.get('campo_livre_2')}")
-                doc.add_paragraph("")
+        if contribuicoes and contribuicoes.get("total_geral", 0.0) > 0:
+            tabela_contrib_rows = [
+                ["Seguro Total", _fmt_moeda_word(contribuicoes.get("seguro_total", 0.0))],
+                ["CP Patronal Total", _fmt_moeda_word(contribuicoes.get("patronal_total", 0.0))],
+                ["CP Terceiros Total", _fmt_moeda_word(contribuicoes.get("terceiros_total", 0.0))],
+                ["TOTAL DE CONTRIBUIÇÕES", _fmt_moeda_word(contribuicoes.get("total_geral", 0.0))]
+            ]
+            _add_table(doc, ["Tipo de Contribuição", "Valor Total"], tabela_contrib_rows)
     
     _add_paragrafo(doc, dados.get("bloco_receita_federal", ""))
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_rf']}")

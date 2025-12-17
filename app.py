@@ -144,17 +144,27 @@ def main() -> None:
         # Cards de Totais
         col1, col2, col3, col4, col5 = st.columns(5)
         
-        # Receita Federal - Total de Previdência (AJUSTE 2)
-        total_previdencia_str = None
+        # Receita Federal - Contribuições
+        contribuicoes = {}
         if hasattr(resultado, 'receita_federal') and resultado.receita_federal:
-            previdencia = resultado.receita_federal.get('previdencia', {})
-            total_previdencia_str = previdencia.get('total_previdencia')
+            contribuicoes = resultado.receita_federal.get('contribuicoes', {})
+        
+        total_seguro = contribuicoes.get('seguro_total', 0.0)
+        total_patronal = contribuicoes.get('patronal_total', 0.0)
+        total_terceiros = contribuicoes.get('terceiros_total', 0.0)
+        total_geral_contrib = contribuicoes.get('total_geral', 0.0)
         
         with col1:
-            if total_previdencia_str:
-                st.metric("Total de Previdência", total_previdencia_str)
-            else:
-                st.metric("Total de Previdência", "N/A")
+            st.metric("Seguro (Total)", f"R$ {total_seguro:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        with col2:
+            st.metric("CP Patronal (Total)", f"R$ {total_patronal:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        with col3:
+            st.metric("CP Terceiros (Total)", f"R$ {total_terceiros:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        
+        with col4:
+            st.metric("Total Contribuições", f"R$ {total_geral_contrib:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         
         # SEFAZ - Situação e Total
         situacao_sefaz = "N/A"
@@ -194,11 +204,14 @@ def main() -> None:
             with st.expander("🏛️ Receita Federal - Detalhes", expanded=False):
                 receita = resultado.receita_federal
                 
-                # Total de Previdência (AJUSTE 2)
-                previdencia = receita.get('previdencia', {})
-                if previdencia.get('existe') and previdencia.get('total_previdencia'):
-                    st.markdown("#### 💰 Total de Previdência")
-                    st.markdown(f"**{previdencia.get('total_previdencia')}**")
+                # Contribuições - Resumo
+                contribuicoes = receita.get('contribuicoes', {})
+                if contribuicoes and contribuicoes.get('total_geral', 0.0) > 0:
+                    st.markdown("#### 💰 Resumo de Contribuições")
+                    st.markdown(f"- **Seguro Total:** R$ {contribuicoes.get('seguro_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    st.markdown(f"- **Patronal Total:** R$ {contribuicoes.get('patronal_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    st.markdown(f"- **Terceiros Total:** R$ {contribuicoes.get('terceiros_total', 0.0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    st.markdown(f"**Total Geral de Contribuições: R$ {contribuicoes.get('total_geral', 0.0):,.2f}**".replace(",", "X").replace(".", ",").replace("X", "."))
                 
                 # CP Seguro (renomeado de CP Segurados)
                 cp_seguro = receita.get('cp_seguro', {})
@@ -255,52 +268,6 @@ def main() -> None:
                         st.markdown("**Simples Nacional:**")
                         df_sn = pd.DataFrame(pgfn['simples_nacional'])
                         st.dataframe(df_sn, use_container_width=True)
-                
-                # Receita CLT (AJUSTE 1)
-                receita_clt = receita.get('receita_clt', {})
-                if receita_clt.get('existe'):
-                    st.markdown("#### Receita CLT")
-                    codigo_clt = receita_clt.get('codigo', 'N/A')
-                    rotulo_clt = receita_clt.get('rotulo', '')
-                    identificador = f"{rotulo_clt} {codigo_clt}".strip() if rotulo_clt else codigo_clt
-                    
-                    # Tabelinha
-                    df_clt = pd.DataFrame({
-                        "Campo": ["Identificador"],
-                        "Valor": [identificador]
-                    })
-                    st.table(df_clt)
-                    
-                    # Expander para ajustes manuais
-                    with st.expander("Ajustes Manuais (CLT)", expanded=False):
-                        observacoes = st.text_area(
-                            "Observações",
-                            value=receita_clt.get('manual', {}).get('observacoes', ''),
-                            key="clt_observacoes"
-                        )
-                        campo_livre_1 = st.text_input(
-                            "Campo livre 1",
-                            value=receita_clt.get('manual', {}).get('campo_livre_1', ''),
-                            key="clt_campo1"
-                        )
-                        campo_livre_2 = st.text_input(
-                            "Campo livre 2",
-                            value=receita_clt.get('manual', {}).get('campo_livre_2', ''),
-                            key="clt_campo2"
-                        )
-                        conferido_clt = st.checkbox(
-                            "Conferido pelo usuário",
-                            value=receita_clt.get('manual', {}).get('conferido', False),
-                            key="clt_conferido"
-                        )
-                        
-                        # Atualiza o objeto receita_clt com dados manuais
-                        if not receita_clt.get('manual'):
-                            receita_clt['manual'] = {}
-                        receita_clt['manual']['observacoes'] = observacoes
-                        receita_clt['manual']['campo_livre_1'] = campo_livre_1
-                        receita_clt['manual']['campo_livre_2'] = campo_livre_2
-                        receita_clt['manual']['conferido'] = conferido_clt
                 
                 # SISPAR
                 sispar = receita.get('sispar', {})
