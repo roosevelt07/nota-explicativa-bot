@@ -192,8 +192,8 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     story.append(Paragraph("RECEITA FEDERAL", heading))
     
     # Total de Previdência (OBJETIVO 3) - SOMENTE o total, sem tabela completa
-    texto_total_previdencia = formatar_total_previdencia(dados)
-    story.append(Paragraph(f"<b>{texto_total_previdencia}</b>", normal))
+    valor_exibido = formatar_total_previdencia(dados)
+    story.append(Paragraph(f"<b>Total de Previdência: {valor_exibido}</b>", normal))
     story.append(Spacer(1, 8))
     
     # PGFN Previdência (OBJETIVO 1)

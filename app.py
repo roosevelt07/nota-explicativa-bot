@@ -149,9 +149,7 @@ def main() -> None:
         # Receita Federal - Total de Previdência (OBJETIVO 3)
         # Cria um dict temporário para usar a função utilitária
         dados_temp = {"receita_federal": resultado.receita_federal if hasattr(resultado, 'receita_federal') and resultado.receita_federal else {}}
-        texto_total_previdencia = formatar_total_previdencia(dados_temp)
-        # Extrai apenas o valor após "Total de Previdência: "
-        valor_exibido = texto_total_previdencia.replace("Total de Previdência: ", "")
+        valor_exibido = formatar_total_previdencia(dados_temp)
         
         with col1:
             st.metric("Total de Previdência", valor_exibido)
@@ -196,8 +194,8 @@ def main() -> None:
                 
                 # Total de Previdência (OBJETIVO 3)
                 dados_temp = {"receita_federal": receita}
-                texto_total_previdencia = formatar_total_previdencia(dados_temp)
-                st.markdown(f"#### 💰 {texto_total_previdencia}")
+                valor_exibido = formatar_total_previdencia(dados_temp)
+                st.markdown(f"#### 💰 Total de Previdência: {valor_exibido}")
                 
                 # CP Seguro (renomeado de CP Segurados)
                 cp_seguro = receita.get('cp_seguro', {})

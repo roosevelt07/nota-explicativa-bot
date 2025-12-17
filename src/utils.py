@@ -69,39 +69,54 @@ def formatar_total_previdencia(dados: dict) -> str:
     Formata o total de previdência para exibição.
     
     Retorna:
-    - "Total de Previdência: Regular" se o valor estiver ausente (None, "", 0 inválido, ou chave inexistente)
-    - "Total de Previdência: R$ X" se o valor estiver presente
+    - "Regular" se o valor estiver ausente (None, "", "-", "não identificado", 0 inválido, ou chave inexistente)
+    - "R$ X.XXX,XX" se o valor estiver presente
     
     Args:
         dados: Dicionário com estrutura de dados do relatório
         
     Returns:
-        String formatada com o total de previdência
+        String formatada: "Regular" ou "R$ X.XXX,XX"
     """
     # Acessa a estrutura: dados["receita_federal"]["previdencia"]["total_previdencia"]
     receita_federal = dados.get("receita_federal", {})
     previdencia = receita_federal.get("previdencia", {})
     total_previdencia = previdencia.get("total_previdencia")
     
-    # Verifica se o valor está ausente (None, string vazia, ou 0 inválido)
-    if not total_previdencia or (isinstance(total_previdencia, str) and not total_previdencia.strip()):
-        return "Total de Previdência: Regular"
+    # Valores que indicam ausência de débito (Regular)
+    valores_ausentes = [None, "", "-", "não identificado", "nao identificado", "não informado", "nao informado"]
     
-    # Se o valor já está formatado como "R$ X.XXX,XX", usa diretamente
-    if isinstance(total_previdencia, str) and total_previdencia.strip():
-        # Garante que começa com "R$" se não começar
-        valor_formatado = total_previdencia.strip()
-        if not valor_formatado.startswith("R$"):
-            valor_formatado = f"R$ {valor_formatado}"
-        return f"Total de Previdência: {valor_formatado}"
+    # Verifica se o valor está ausente
+    if total_previdencia is None:
+        return "Regular"
+    
+    # Se for string, verifica se está vazia ou é um valor ausente
+    if isinstance(total_previdencia, str):
+        valor_limpo = total_previdencia.strip().lower()
+        if not valor_limpo or valor_limpo in valores_ausentes:
+            return "Regular"
+        
+        # Se já está formatado como "R$ X.XXX,XX", retorna apenas o valor (sem "Total de Previdência:")
+        if valor_limpo.startswith("r$"):
+            return total_previdencia.strip()
+        # Se não começa com R$, tenta formatar como moeda
+        try:
+            # Tenta converter string BR para float
+            valor_float = converter_valor_br_para_float(total_previdencia)
+            if valor_float > 0:
+                return formatar_moeda_br(valor_float)
+            else:
+                return "Regular"
+        except (ValueError, TypeError):
+            return "Regular"
     
     # Se for número, formata
     try:
         valor_float = float(total_previdencia)
         if valor_float > 0:
-            return f"Total de Previdência: {formatar_moeda_br(valor_float)}"
+            return formatar_moeda_br(valor_float)
         else:
-            return "Total de Previdência: Regular"
+            return "Regular"
     except (ValueError, TypeError):
-        return "Total de Previdência: Regular"
+        return "Regular"
 

@@ -154,8 +154,8 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     _add_heading(doc, "RECEITA FEDERAL")
     
     # Total de Previdência (OBJETIVO 3) - SOMENTE o total, sem tabela completa
-    texto_total_previdencia = formatar_total_previdencia(dados)
-    _add_paragrafo(doc, texto_total_previdencia)
+    valor_exibido = formatar_total_previdencia(dados)
+    _add_paragrafo(doc, f"Total de Previdência: {valor_exibido}")
     doc.add_paragraph("")
     
     # PGFN Previdência (OBJETIVO 1)
