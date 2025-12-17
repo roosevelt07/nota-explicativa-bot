@@ -28,7 +28,7 @@ from reportlab.platypus import (
     PageBreak,
 )
 
-from src.utils import formatar_moeda, formatar_total_previdencia
+from src.utils import formatar_total_previdencia
 from reportlab.pdfgen import canvas as rl_canvas
 
 
