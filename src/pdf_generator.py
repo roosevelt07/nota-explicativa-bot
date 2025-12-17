@@ -332,7 +332,7 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     # Força o FGTS a começar na página 2
     story.append(PageBreak())
     # Espaçamento extra para evitar sobreposição com cabeçalho/logo do template
-    story.append(Spacer(1, 24))
+    story.append(Spacer(1, 40))
     story.append(Paragraph("FGTS", heading))
     
     # Lógica Híbrida: Usa dados estruturados se disponíveis, senão usa texto bloco
