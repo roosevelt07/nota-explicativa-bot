@@ -63,3 +63,45 @@ def formatar_moeda_br(valor: float) -> str:
     except (ValueError, TypeError):
         return "R$ 0,00"
 
+
+def formatar_total_previdencia(dados: dict) -> str:
+    """
+    Formata o total de previdência para exibição.
+    
+    Retorna:
+    - "Total de Previdência: Regular" se o valor estiver ausente (None, "", 0 inválido, ou chave inexistente)
+    - "Total de Previdência: R$ X" se o valor estiver presente
+    
+    Args:
+        dados: Dicionário com estrutura de dados do relatório
+        
+    Returns:
+        String formatada com o total de previdência
+    """
+    # Acessa a estrutura: dados["receita_federal"]["previdencia"]["total_previdencia"]
+    receita_federal = dados.get("receita_federal", {})
+    previdencia = receita_federal.get("previdencia", {})
+    total_previdencia = previdencia.get("total_previdencia")
+    
+    # Verifica se o valor está ausente (None, string vazia, ou 0 inválido)
+    if not total_previdencia or (isinstance(total_previdencia, str) and not total_previdencia.strip()):
+        return "Total de Previdência: Regular"
+    
+    # Se o valor já está formatado como "R$ X.XXX,XX", usa diretamente
+    if isinstance(total_previdencia, str) and total_previdencia.strip():
+        # Garante que começa com "R$" se não começar
+        valor_formatado = total_previdencia.strip()
+        if not valor_formatado.startswith("R$"):
+            valor_formatado = f"R$ {valor_formatado}"
+        return f"Total de Previdência: {valor_formatado}"
+    
+    # Se for número, formata
+    try:
+        valor_float = float(total_previdencia)
+        if valor_float > 0:
+            return f"Total de Previdência: {formatar_moeda_br(valor_float)}"
+        else:
+            return "Total de Previdência: Regular"
+    except (ValueError, TypeError):
+        return "Total de Previdência: Regular"
+

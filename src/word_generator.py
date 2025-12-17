@@ -153,15 +153,10 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     _add_heading(doc, "RECEITA FEDERAL")
     
     # Total de Previdência (OBJETIVO 3) - SOMENTE o total, sem tabela completa
-    if "receita_federal" in dados and dados["receita_federal"]:
-        receita = dados["receita_federal"]
-        previdencia = receita.get("previdencia", {})
-        
-        if previdencia.get("existe") and previdencia.get("total_previdencia"):
-            _add_paragrafo(doc, f"Total de Previdência: {previdencia.get('total_previdencia')}")
-        else:
-            _add_paragrafo(doc, "Total de Previdência: não identificado")
-        doc.add_paragraph("")
+    from src.utils import formatar_total_previdencia
+    texto_total_previdencia = formatar_total_previdencia(dados)
+    _add_paragrafo(doc, texto_total_previdencia)
+    doc.add_paragraph("")
         
         # PGFN Previdência (OBJETIVO 1)
         pgfn_previdencia = receita.get("pgfn_previdencia", {})

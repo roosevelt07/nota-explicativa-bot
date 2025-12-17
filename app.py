@@ -146,16 +146,15 @@ def main() -> None:
         col1, col2, col3, col4, col5 = st.columns(5)
         
         # Receita Federal - Total de Previdência (OBJETIVO 3)
-        total_previdencia_str = None
-        if hasattr(resultado, 'receita_federal') and resultado.receita_federal:
-            previdencia = resultado.receita_federal.get('previdencia', {})
-            total_previdencia_str = previdencia.get('total_previdencia')
+        from src.utils import formatar_total_previdencia
+        # Cria um dict temporário para usar a função utilitária
+        dados_temp = {"receita_federal": resultado.receita_federal if hasattr(resultado, 'receita_federal') and resultado.receita_federal else {}}
+        texto_total_previdencia = formatar_total_previdencia(dados_temp)
+        # Extrai apenas o valor após "Total de Previdência: "
+        valor_exibido = texto_total_previdencia.replace("Total de Previdência: ", "")
         
         with col1:
-            if total_previdencia_str:
-                st.metric("Total de Previdência", total_previdencia_str)
-            else:
-                st.metric("Total de Previdência", "não identificado")
+            st.metric("Total de Previdência", valor_exibido)
         
         # SEFAZ - Situação e Total
         situacao_sefaz = "N/A"
@@ -196,13 +195,10 @@ def main() -> None:
                 receita = resultado.receita_federal
                 
                 # Total de Previdência (OBJETIVO 3)
-                previdencia = receita.get('previdencia', {})
-                if previdencia.get('existe') and previdencia.get('total_previdencia'):
-                    st.markdown("#### 💰 Total de Previdência")
-                    st.markdown(f"**{previdencia.get('total_previdencia')}**")
-                elif previdencia.get('existe') == False:
-                    st.markdown("#### 💰 Total de Previdência")
-                    st.markdown("**não identificado**")
+                from src.utils import formatar_total_previdencia
+                dados_temp = {"receita_federal": receita}
+                texto_total_previdencia = formatar_total_previdencia(dados_temp)
+                st.markdown(f"#### 💰 {texto_total_previdencia}")
                 
                 # CP Seguro (renomeado de CP Segurados)
                 cp_seguro = receita.get('cp_seguro', {})
