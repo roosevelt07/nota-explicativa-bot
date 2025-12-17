@@ -459,7 +459,7 @@ def main() -> None:
         # --- Municipais ---
         st.markdown("---")
         tabela_municipais = st.text_area(
-            "Débitos Municipais (Manual)",
+            "Débitos Municipais",
             value=st.session_state.get("manual_debitos_municipais", ""),
             placeholder="Taxa TFF | 2025 | R$ 500,00 | Em aberto",
             height=80,
@@ -478,7 +478,7 @@ def main() -> None:
         # --- Parcelamentos ---
         st.markdown("---")
         tabela_parcelamentos = st.text_area(
-            "Parcelamentos Ativos (Manual)",
+            "Parcelamentos Ativos",
             value=st.session_state.get("manual_parcelamentos_ativos", ""),
             placeholder="SIMPLES | R$ 1000 | Dia 20 | 60 | 10",
             height=80,

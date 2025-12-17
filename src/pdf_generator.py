@@ -376,9 +376,6 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_fgts']}", normal))
     story.append(Spacer(1, 12))
 
-    # 👉 NOVA PÁGINA
-    story.append(PageBreak())
-
     # ========================= PARCELAMENTOS =================
     story.append(Paragraph("PARCELAMENTOS", heading))
     
