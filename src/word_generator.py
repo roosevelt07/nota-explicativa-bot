@@ -239,6 +239,16 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
         else:
             _add_paragrafo(doc, "Sem débitos informados ou identificados.")
     
+    # Itens adicionais (manual)
+    manual_sefaz = dados.get("sefaz", {}).get("itens_adicionais_manuais", "").strip()
+    if manual_sefaz:
+        _add_paragrafo(doc, "Itens adicionais (manual):")
+        for linha in manual_sefaz.split("\n"):
+            if linha.strip():
+                _add_paragrafo(doc, linha.strip())
+    else:
+        _add_paragrafo(doc, "Itens adicionais (manual): (não informado)")
+    
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_sefaz']}")
     doc.add_paragraph("")
 
@@ -254,6 +264,17 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
         )
     else:
         _add_paragrafo(doc, "Sem débitos informados.")
+    
+    # Débitos municipais (manual)
+    manual_mun = dados.get("debitos_municipais", {}).get("texto_manual", "").strip()
+    if manual_mun:
+        _add_paragrafo(doc, "Débitos municipais (manual):")
+        for linha in manual_mun.split("\n"):
+            if linha.strip():
+                _add_paragrafo(doc, linha.strip())
+    else:
+        _add_paragrafo(doc, "Débitos municipais (manual): (não informado)")
+    
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_municipal']}")
     doc.add_paragraph("")
 
@@ -389,45 +410,16 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
         )
     elif not ("receita_federal" in dados and dados["receita_federal"] and dados["receita_federal"].get("sispar", {}).get("tem_sispar")):
         _add_paragrafo(doc, "Não há parcelamentos informados.")
-    doc.add_paragraph("")
-
-    # ========================= INFORMAÇÕES MANUAIS =========================
-    manuais = dados.get("manuais", {})
-    itens_sefaz = manuais.get("itens_adicionais_sefaz", "").strip()
-    debitos_mun = manuais.get("debitos_municipais", "").strip()
-    parcel_ativos = manuais.get("parcelamentos_ativos", "").strip()
     
-    # Sempre mostra a seção (mesmo se vazia, mostra "(não informado)")
-    _add_heading(doc, "INFORMAÇÕES MANUAIS")
-    
-    # Itens Adicionais SEFAZ
-    if itens_sefaz:
-        _add_paragrafo(doc, "Itens Adicionais SEFAZ:")
-        for linha in itens_sefaz.split("\n"):
+    # Parcelamentos ativos (manual)
+    manual_parc = dados.get("parcelamentos_ativos", {}).get("texto_manual", "").strip()
+    if manual_parc:
+        _add_paragrafo(doc, "Parcelamentos ativos (manual):")
+        for linha in manual_parc.split("\n"):
             if linha.strip():
                 _add_paragrafo(doc, linha.strip())
     else:
-        _add_paragrafo(doc, "Itens Adicionais SEFAZ: (não informado)")
-    doc.add_paragraph("")
-    
-    # Débitos Municipais
-    if debitos_mun:
-        _add_paragrafo(doc, "Débitos Municipais:")
-        for linha in debitos_mun.split("\n"):
-            if linha.strip():
-                _add_paragrafo(doc, linha.strip())
-    else:
-        _add_paragrafo(doc, "Débitos Municipais: (não informado)")
-    doc.add_paragraph("")
-    
-    # Parcelamentos Ativos
-    if parcel_ativos:
-        _add_paragrafo(doc, "Parcelamentos Ativos:")
-        for linha in parcel_ativos.split("\n"):
-            if linha.strip():
-                _add_paragrafo(doc, linha.strip())
-    else:
-        _add_paragrafo(doc, "Parcelamentos Ativos: (não informado)")
+        _add_paragrafo(doc, "Parcelamentos ativos (manual): (não informado)")
     doc.add_paragraph("")
     
     # ============================= CONCLUSÃO ==========================

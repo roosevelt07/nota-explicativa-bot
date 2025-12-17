@@ -287,12 +287,33 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
             story.append(Paragraph("✅ Situação REGULAR (Certidão Negativa Emitida).", normal))
         else:
             story.append(Paragraph("Sem débitos informados ou identificados.", normal))
+    
+    # Itens adicionais (manual)
+    manual_sefaz = dados.get("sefaz", {}).get("itens_adicionais_manuais", "").strip()
+    if manual_sefaz:
+        story.append(Paragraph(f"<b>Itens adicionais (manual):</b>", normal))
+        for linha in manual_sefaz.split("\n"):
+            if linha.strip():
+                story.append(Paragraph(linha.strip(), normal))
+    else:
+        story.append(Paragraph("<b>Itens adicionais (manual):</b> (não informado)", normal))
 
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_sefaz']}", normal))
     story.append(Spacer(1, 10))
 
     # ==================== DÉBITOS MUNICIPAIS =================
     story.append(Paragraph("DÉBITOS MUNICIPAIS", heading))
+    
+    # Débitos municipais (manual)
+    manual_mun = dados.get("debitos_municipais", {}).get("texto_manual", "").strip()
+    if manual_mun:
+        story.append(Paragraph(f"<b>Débitos municipais (manual):</b>", normal))
+        for linha in manual_mun.split("\n"):
+            if linha.strip():
+                story.append(Paragraph(linha.strip(), normal))
+    else:
+        story.append(Paragraph("<b>Débitos municipais (manual):</b> (não informado)", normal))
+    story.append(Spacer(1, 6))
     if dados.get("municipais_rows") and len(dados["municipais_rows"]) > 0:
         tabela_mun = [["Descrição do Débito", "Período", "Valor", "Status"]] + dados["municipais_rows"]
         story.append(
@@ -463,47 +484,18 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
         )
     elif not ("receita_federal" in dados and dados["receita_federal"] and dados["receita_federal"].get("sispar", {}).get("tem_sispar")):
         story.append(Paragraph("Não há parcelamentos informados.", normal))
+    
+    # Parcelamentos ativos (manual)
+    manual_parc = dados.get("parcelamentos_ativos", {}).get("texto_manual", "").strip()
+    if manual_parc:
+        story.append(Paragraph(f"<b>Parcelamentos ativos (manual):</b>", normal))
+        for linha in manual_parc.split("\n"):
+            if linha.strip():
+                story.append(Paragraph(linha.strip(), normal))
+    else:
+        story.append(Paragraph("<b>Parcelamentos ativos (manual):</b> (não informado)", normal))
+    
     story.append(Spacer(1, 12))
-
-    # ========================= INFORMAÇÕES MANUAIS =========================
-    manuais = dados.get("manuais", {})
-    itens_sefaz = manuais.get("itens_adicionais_sefaz", "").strip()
-    debitos_mun = manuais.get("debitos_municipais", "").strip()
-    parcel_ativos = manuais.get("parcelamentos_ativos", "").strip()
-    
-    # Sempre mostra a seção (mesmo se vazia, mostra "(não informado)")
-    story.append(Paragraph("INFORMAÇÕES MANUAIS", heading))
-    story.append(Spacer(1, 6))
-    
-    # Itens Adicionais SEFAZ
-    if itens_sefaz:
-        story.append(Paragraph("<b>Itens Adicionais SEFAZ:</b>", normal))
-        for linha in itens_sefaz.split("\n"):
-            if linha.strip():
-                story.append(Paragraph(linha.strip(), normal))
-    else:
-        story.append(Paragraph("<b>Itens Adicionais SEFAZ:</b> (não informado)", normal))
-    story.append(Spacer(1, 4))
-    
-    # Débitos Municipais
-    if debitos_mun:
-        story.append(Paragraph("<b>Débitos Municipais:</b>", normal))
-        for linha in debitos_mun.split("\n"):
-            if linha.strip():
-                story.append(Paragraph(linha.strip(), normal))
-    else:
-        story.append(Paragraph("<b>Débitos Municipais:</b> (não informado)", normal))
-    story.append(Spacer(1, 4))
-    
-    # Parcelamentos Ativos
-    if parcel_ativos:
-        story.append(Paragraph("<b>Parcelamentos Ativos:</b>", normal))
-        for linha in parcel_ativos.split("\n"):
-            if linha.strip():
-                story.append(Paragraph(linha.strip(), normal))
-    else:
-        story.append(Paragraph("<b>Parcelamentos Ativos:</b> (não informado)", normal))
-    story.append(Spacer(1, 8))
     
     # ============================ CONCLUSÃO ===========================
     story.append(Paragraph("CONCLUSÃO", heading))
