@@ -195,8 +195,10 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     texto_total_previdencia = formatar_total_previdencia(dados)
     story.append(Paragraph(f"<b>{texto_total_previdencia}</b>", normal))
     story.append(Spacer(1, 8))
-        
-        # PGFN Previdência (OBJETIVO 1)
+    
+    # PGFN Previdência (OBJETIVO 1)
+    if "receita_federal" in dados and dados["receita_federal"]:
+        receita = dados["receita_federal"]
         pgfn_previdencia = receita.get("pgfn_previdencia", {})
         if pgfn_previdencia.get("existe"):
             receitas_list = pgfn_previdencia.get("receitas", [])
