@@ -210,8 +210,13 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
             story.append(Paragraph(f"Receita: {receitas_str}", normal))
             
             info_adicional = pgfn_previdencia.get("informacoes_adicionais_usuario", "")
-            if info_adicional:
-                story.append(Paragraph(f"Informações adicionais: {info_adicional}", normal))
+            if info_adicional and info_adicional.strip():
+                # Quebra o texto em linhas se for muito longo
+                story.append(Paragraph("<b>Informações adicionais:</b>", normal))
+                # Divide em parágrafos se houver quebras de linha
+                for linha in info_adicional.split('\n'):
+                    if linha.strip():
+                        story.append(Paragraph(linha.strip(), normal))
             
             story.append(Spacer(1, 6))
     

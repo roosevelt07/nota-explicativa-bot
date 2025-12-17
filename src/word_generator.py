@@ -173,8 +173,12 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
             _add_paragrafo(doc, f"Receita: {receitas_str}")
             
             info_adicional = pgfn_previdencia.get("informacoes_adicionais_usuario", "")
-            if info_adicional:
-                _add_paragrafo(doc, f"Informações adicionais: {info_adicional}")
+            if info_adicional and info_adicional.strip():
+                _add_paragrafo(doc, "Informações adicionais:")
+                # Divide em parágrafos se houver quebras de linha
+                for linha in info_adicional.split('\n'):
+                    if linha.strip():
+                        _add_paragrafo(doc, linha.strip())
             
             doc.add_paragraph("")
     

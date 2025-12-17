@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, Any
 import tempfile
 import os
+import copy
 
 import streamlit as st
 import pandas as pd
@@ -496,13 +497,19 @@ def main() -> None:
                 receitas_str = '; '.join(receitas_list) if receitas_list else "Não identificado"
                 st.info(f"Receita detectada automaticamente: {receitas_str}")
                 
+                # Recupera valor do session_state se existir, senão usa o valor do objeto
+                valor_inicial = st.session_state.get('pgfn_prev_info_adicional', pgfn_previdencia.get('informacoes_adicionais_usuario', ''))
+                
                 info_adicional = st.text_area(
                     "Informações adicionais",
-                    value=pgfn_previdencia.get('informacoes_adicionais_usuario', ''),
+                    value=valor_inicial,
                     key="pgfn_prev_info_adicional",
                     height=100,
                     help="Preencha informações adicionais sobre o PGFN Previdência"
                 )
+                
+                # Salva no session_state para persistir entre reruns
+                st.session_state['pgfn_prev_info_adicional'] = info_adicional
                 
                 # Atualiza o objeto diretamente (será salvo no form_data)
                 pgfn_previdencia['informacoes_adicionais_usuario'] = info_adicional
@@ -647,13 +654,26 @@ def main() -> None:
                 form_data["fgts"] = resultado.fgts
             
             if getattr(resultado, "receita_federal", None):
-                # Atualiza informações adicionais do PGFN Previdência se foi preenchido no formulário
-                if 'pgfn_previdencia_info' in st.session_state:
-                    if not resultado.receita_federal.get('pgfn_previdencia'):
-                        resultado.receita_federal['pgfn_previdencia'] = {}
-                    resultado.receita_federal['pgfn_previdencia']['informacoes_adicionais_usuario'] = st.session_state['pgfn_previdencia_info']
+                # Cria uma cópia profunda do receita_federal para não modificar o objeto original
+                receita_federal_copy = copy.deepcopy(resultado.receita_federal) if isinstance(resultado.receita_federal, dict) else dict(resultado.receita_federal) if hasattr(resultado.receita_federal, '__dict__') else resultado.receita_federal
                 
-                form_data["receita_federal"] = resultado.receita_federal
+                # Garante que a estrutura pgfn_previdencia existe
+                if not receita_federal_copy.get('pgfn_previdencia'):
+                    receita_federal_copy['pgfn_previdencia'] = {}
+                
+                # Atualiza informações adicionais do PGFN Previdência se foi preenchido no formulário
+                # O valor já foi salvo no session_state pelo st.text_area quando o formulário foi submetido
+                if 'pgfn_prev_info_adicional' in st.session_state:
+                    receita_federal_copy['pgfn_previdencia']['informacoes_adicionais_usuario'] = st.session_state['pgfn_prev_info_adicional']
+                elif receita_federal_copy.get('pgfn_previdencia', {}).get('informacoes_adicionais_usuario'):
+                    # Se já existe no objeto, mantém
+                    pass
+                else:
+                    # Inicializa vazio se não existir
+                    receita_federal_copy['pgfn_previdencia']['informacoes_adicionais_usuario'] = ''
+                
+                # Garante que o objeto receita_federal tenha a estrutura completa atualizada
+                form_data["receita_federal"] = receita_federal_copy
 
         # Processamento Final (Core)
         dados_finais = montar_dados_relatorio(form_data)
