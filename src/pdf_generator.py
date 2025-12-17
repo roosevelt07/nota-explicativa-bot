@@ -288,15 +288,15 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
         else:
             story.append(Paragraph("Sem débitos informados ou identificados.", normal))
     
-    # Itens adicionais (manual)
+    # Itens adicionais
     manual_sefaz = dados.get("sefaz", {}).get("itens_adicionais_manuais", "").strip()
     if manual_sefaz:
-        story.append(Paragraph(f"<b>Itens adicionais (manual):</b>", normal))
+        story.append(Paragraph(f"<b>Itens adicionais:</b>", normal))
         for linha in manual_sefaz.split("\n"):
             if linha.strip():
                 story.append(Paragraph(linha.strip(), normal))
     else:
-        story.append(Paragraph("<b>Itens adicionais (manual):</b> (não informado)", normal))
+        story.append(Paragraph("<b>Itens adicionais:</b> (não informado)", normal))
 
     story.append(Paragraph(f"Data da consulta: {dados['data_consulta_sefaz']}", normal))
     story.append(Spacer(1, 10))
@@ -304,15 +304,15 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     # ==================== DÉBITOS MUNICIPAIS =================
     story.append(Paragraph("DÉBITOS MUNICIPAIS", heading))
     
-    # Débitos municipais (manual)
+    # Débitos municipais
     manual_mun = dados.get("debitos_municipais", {}).get("texto_manual", "").strip()
     if manual_mun:
-        story.append(Paragraph(f"<b>Débitos municipais (manual):</b>", normal))
+        story.append(Paragraph(f"<b>Débitos municipais:</b>", normal))
         for linha in manual_mun.split("\n"):
             if linha.strip():
                 story.append(Paragraph(linha.strip(), normal))
     else:
-        story.append(Paragraph("<b>Débitos municipais (manual):</b> (não informado)", normal))
+        story.append(Paragraph("<b>Débitos municipais:</b> (não informado)", normal))
     story.append(Spacer(1, 6))
     if dados.get("municipais_rows") and len(dados["municipais_rows"]) > 0:
         tabela_mun = [["Descrição do Débito", "Período", "Valor", "Status"]] + dados["municipais_rows"]
@@ -378,7 +378,6 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
 
     # 👉 NOVA PÁGINA
     story.append(PageBreak())
-    story.append(Spacer(1, 120)) # Espaço para o cabeçalho do timbrado na pag 2
 
     # ========================= PARCELAMENTOS =================
     story.append(Paragraph("PARCELAMENTOS", heading))
@@ -485,15 +484,15 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     elif not ("receita_federal" in dados and dados["receita_federal"] and dados["receita_federal"].get("sispar", {}).get("tem_sispar")):
         story.append(Paragraph("Não há parcelamentos informados.", normal))
     
-    # Parcelamentos ativos (manual)
+    # Parcelamentos ativos
     manual_parc = dados.get("parcelamentos_ativos", {}).get("texto_manual", "").strip()
     if manual_parc:
-        story.append(Paragraph(f"<b>Parcelamentos ativos (manual):</b>", normal))
+        story.append(Paragraph(f"<b>Parcelamentos ativos:</b>", normal))
         for linha in manual_parc.split("\n"):
             if linha.strip():
                 story.append(Paragraph(linha.strip(), normal))
     else:
-        story.append(Paragraph("<b>Parcelamentos ativos (manual):</b> (não informado)", normal))
+        story.append(Paragraph("<b>Parcelamentos ativos:</b> (não informado)", normal))
     
     story.append(Spacer(1, 12))
     

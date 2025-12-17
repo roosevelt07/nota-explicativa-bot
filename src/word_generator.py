@@ -239,15 +239,15 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
         else:
             _add_paragrafo(doc, "Sem débitos informados ou identificados.")
     
-    # Itens adicionais (manual)
+    # Itens adicionais
     manual_sefaz = dados.get("sefaz", {}).get("itens_adicionais_manuais", "").strip()
     if manual_sefaz:
-        _add_paragrafo(doc, "Itens adicionais (manual):")
+        _add_paragrafo(doc, "Itens adicionais:")
         for linha in manual_sefaz.split("\n"):
             if linha.strip():
                 _add_paragrafo(doc, linha.strip())
     else:
-        _add_paragrafo(doc, "Itens adicionais (manual): (não informado)")
+        _add_paragrafo(doc, "Itens adicionais: (não informado)")
     
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_sefaz']}")
     doc.add_paragraph("")
@@ -265,15 +265,15 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     else:
         _add_paragrafo(doc, "Sem débitos informados.")
     
-    # Débitos municipais (manual)
+    # Débitos municipais
     manual_mun = dados.get("debitos_municipais", {}).get("texto_manual", "").strip()
     if manual_mun:
-        _add_paragrafo(doc, "Débitos municipais (manual):")
+        _add_paragrafo(doc, "Débitos municipais:")
         for linha in manual_mun.split("\n"):
             if linha.strip():
                 _add_paragrafo(doc, linha.strip())
     else:
-        _add_paragrafo(doc, "Débitos municipais (manual): (não informado)")
+        _add_paragrafo(doc, "Débitos municipais: (não informado)")
     
     _add_paragrafo(doc, f"Data da consulta: {dados['data_consulta_municipal']}")
     doc.add_paragraph("")
@@ -411,15 +411,15 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
     elif not ("receita_federal" in dados and dados["receita_federal"] and dados["receita_federal"].get("sispar", {}).get("tem_sispar")):
         _add_paragrafo(doc, "Não há parcelamentos informados.")
     
-    # Parcelamentos ativos (manual)
+    # Parcelamentos ativos
     manual_parc = dados.get("parcelamentos_ativos", {}).get("texto_manual", "").strip()
     if manual_parc:
-        _add_paragrafo(doc, "Parcelamentos ativos (manual):")
+        _add_paragrafo(doc, "Parcelamentos ativos:")
         for linha in manual_parc.split("\n"):
             if linha.strip():
                 _add_paragrafo(doc, linha.strip())
     else:
-        _add_paragrafo(doc, "Parcelamentos ativos (manual): (não informado)")
+        _add_paragrafo(doc, "Parcelamentos ativos: (não informado)")
     doc.add_paragraph("")
     
     # ============================= CONCLUSÃO ==========================
