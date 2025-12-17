@@ -465,6 +465,46 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
         story.append(Paragraph("Não há parcelamentos informados.", normal))
     story.append(Spacer(1, 12))
 
+    # ========================= INFORMAÇÕES MANUAIS =========================
+    manuais = dados.get("manuais", {})
+    itens_sefaz = manuais.get("itens_adicionais_sefaz", "").strip()
+    debitos_mun = manuais.get("debitos_municipais", "").strip()
+    parcel_ativos = manuais.get("parcelamentos_ativos", "").strip()
+    
+    # Sempre mostra a seção (mesmo se vazia, mostra "(não informado)")
+    story.append(Paragraph("INFORMAÇÕES MANUAIS", heading))
+    story.append(Spacer(1, 6))
+    
+    # Itens Adicionais SEFAZ
+    if itens_sefaz:
+        story.append(Paragraph("<b>Itens Adicionais SEFAZ:</b>", normal))
+        for linha in itens_sefaz.split("\n"):
+            if linha.strip():
+                story.append(Paragraph(linha.strip(), normal))
+    else:
+        story.append(Paragraph("<b>Itens Adicionais SEFAZ:</b> (não informado)", normal))
+    story.append(Spacer(1, 4))
+    
+    # Débitos Municipais
+    if debitos_mun:
+        story.append(Paragraph("<b>Débitos Municipais:</b>", normal))
+        for linha in debitos_mun.split("\n"):
+            if linha.strip():
+                story.append(Paragraph(linha.strip(), normal))
+    else:
+        story.append(Paragraph("<b>Débitos Municipais:</b> (não informado)", normal))
+    story.append(Spacer(1, 4))
+    
+    # Parcelamentos Ativos
+    if parcel_ativos:
+        story.append(Paragraph("<b>Parcelamentos Ativos:</b>", normal))
+        for linha in parcel_ativos.split("\n"):
+            if linha.strip():
+                story.append(Paragraph(linha.strip(), normal))
+    else:
+        story.append(Paragraph("<b>Parcelamentos Ativos:</b> (não informado)", normal))
+    story.append(Spacer(1, 8))
+    
     # ============================ CONCLUSÃO ===========================
     story.append(Paragraph("CONCLUSÃO", heading))
     for linha in dados["bloco_conclusao"].split("\n"):

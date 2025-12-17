@@ -450,17 +450,20 @@ def main() -> None:
 
         tabela_sefaz = st.text_area(
             "Itens Adicionais SEFAZ (Opcional - Formato: Descrição | Período | Status)", 
-            value=def_sefaz_manual,
+            value=st.session_state.get("manual_itens_adicionais_sefaz", def_sefaz_manual),
             height=80,
-            help="Use barra vertical | para separar as colunas se digitar manualmente."
+            help="Use barra vertical | para separar as colunas se digitar manualmente.",
+            key="manual_itens_adicionais_sefaz"
         )
 
         # --- Municipais ---
         st.markdown("---")
         tabela_municipais = st.text_area(
             "Débitos Municipais (Manual)",
+            value=st.session_state.get("manual_debitos_municipais", ""),
             placeholder="Taxa TFF | 2025 | R$ 500,00 | Em aberto",
-            height=80
+            height=80,
+            key="manual_debitos_municipais"
         )
 
         # --- FGTS ---
@@ -476,8 +479,10 @@ def main() -> None:
         st.markdown("---")
         tabela_parcelamentos = st.text_area(
             "Parcelamentos Ativos (Manual)",
+            value=st.session_state.get("manual_parcelamentos_ativos", ""),
             placeholder="SIMPLES | R$ 1000 | Dia 20 | 60 | 10",
-            height=80
+            height=80,
+            key="manual_parcelamentos_ativos"
         )
 
         # --- Ajustes Manuais PGFN Previdência ---
@@ -675,6 +680,12 @@ def main() -> None:
 
         # Processamento Final (Core)
         dados_finais = montar_dados_relatorio(form_data)
+        
+        # PARTE 2: Injeção dos campos manuais no JSON final antes do PDF
+        dados_finais["manuais"] = dados_finais.get("manuais", {})
+        dados_finais["manuais"]["itens_adicionais_sefaz"] = st.session_state.get("manual_itens_adicionais_sefaz", "").strip()
+        dados_finais["manuais"]["debitos_municipais"] = st.session_state.get("manual_debitos_municipais", "").strip()
+        dados_finais["manuais"]["parcelamentos_ativos"] = st.session_state.get("manual_parcelamentos_ativos", "").strip()
         
         # Geração dos Arquivos em Memória
         pdf_bytes = gerar_pdf_bytes(dados_finais)
