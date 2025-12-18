@@ -217,12 +217,45 @@ def gerar_docx_bytes(dados: Dict[str, Any]) -> bytes:
             val = _fmt_moeda_word(item.get('valor_total', 0))
             linhas_finais_sefaz.append([desc, ref, val])
         
-        # Débitos Fiscais
+        # Débitos Fiscais (estrutura antiga)
         for item in pendencias.get("debitos_fiscais_autuacoes", []):
             desc = f"Autuação {item.get('natureza_debito', '')}"
             ref = item.get('periodo', '')
             val = _fmt_moeda_word(item.get('valor_consolidado', 0))
             linhas_finais_sefaz.append([desc, ref, val])
+        
+        # DÉBITOS FISCAIS (estrutura padronizada - quando IRREGULAR)
+        from src.utils import safe_str
+        dados_processados = sefaz.get('dados_processados', {})
+        if dados_processados:
+            detalhes = dados_processados.get('detalhes', {})
+            debitos_fiscais = detalhes.get('debitos_fiscais', {}).get('itens', [])
+            
+            if debitos_fiscais:
+                _add_heading(doc, "Débitos Fiscais")
+                tabela_debitos_headers = ["Processo", "Situação", "Saldo (R$)"]
+                tabela_debitos_rows = []
+                for item in debitos_fiscais:
+                    processo = safe_str(item.get('processo', ''))
+                    situacao = safe_str(item.get('situacao', ''))
+                    saldo = float(item.get('saldo', 0.0))
+                    tabela_debitos_rows.append([processo, situacao, _fmt_moeda_word(saldo)])
+                
+                _add_table(doc, tabela_debitos_headers, tabela_debitos_rows)
+            
+            # FRONTEIRAS (estrutura padronizada - quando IRREGULAR)
+            fronteiras = detalhes.get('fronteira', {}).get('itens', [])
+            if fronteiras:
+                _add_heading(doc, "Fronteiras")
+                tabela_fronteiras_headers = ["Num. DAE", "Dt. venc.", "Valor Original (R$)"]
+                tabela_fronteiras_rows = []
+                for item in fronteiras:
+                    dae = safe_str(item.get('dae', ''))
+                    vencimento = safe_str(item.get('vencimento', ''))
+                    valor = float(item.get('valor_original', 0.0))
+                    tabela_fronteiras_rows.append([dae, vencimento, _fmt_moeda_word(valor)])
+                
+                _add_table(doc, tabela_fronteiras_headers, tabela_fronteiras_rows)
     
     # Renderiza Tabela ou Mensagem "Sem Débitos"
     if linhas_finais_sefaz:

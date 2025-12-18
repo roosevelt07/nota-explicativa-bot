@@ -324,6 +324,39 @@ def main() -> None:
                 if situacao in ['IRREGULAR', 'EM ATRASO', 'IRREGULAR / COM PENDÊNCIAS'] or total_geral > 0:
                     pendencias = sefaz.get('pendencias_identificadas', {})
                     
+                    # DÉBITOS FISCAIS (extraídos do texto quando IRREGULAR)
+                    dados_processados = sefaz.get('dados_processados', {})
+                    detalhes = dados_processados.get('detalhes', {}) if dados_processados else {}
+                    debitos_fiscais = detalhes.get('debitos_fiscais', {}).get('itens', [])
+                    
+                    if debitos_fiscais:
+                        st.markdown("#### 💳 Débitos Fiscais")
+                        df_debitos = pd.DataFrame(debitos_fiscais)
+                        # Formata saldo para exibição
+                        if 'saldo' in df_debitos.columns:
+                            df_debitos['Saldo (R$)'] = df_debitos['saldo'].apply(
+                                lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                            )
+                            df_debitos = df_debitos[['processo', 'situacao', 'Saldo (R$)']]
+                            df_debitos.columns = ['Processo', 'Situação', 'Saldo (R$)']
+                        st.dataframe(df_debitos, use_container_width=True, hide_index=True)
+                    elif situacao == 'IRREGULAR':
+                        st.warning("⚠️ SEFAZ indica irregularidade, mas não foi possível extrair a tabela automaticamente.")
+                    
+                    # FRONTEIRAS (extraídas do texto quando IRREGULAR)
+                    fronteiras = detalhes.get('fronteira', {}).get('itens', [])
+                    if fronteiras:
+                        st.markdown("#### 🌐 Fronteiras")
+                        df_fronteiras = pd.DataFrame(fronteiras)
+                        # Formata valor para exibição
+                        if 'valor_original' in df_fronteiras.columns:
+                            df_fronteiras['Valor Original (R$)'] = df_fronteiras['valor_original'].apply(
+                                lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                            )
+                            df_fronteiras = df_fronteiras[['dae', 'vencimento', 'Valor Original (R$)']]
+                            df_fronteiras.columns = ['Num. DAE', 'Dt. venc.', 'Valor Original (R$)']
+                        st.dataframe(df_fronteiras, use_container_width=True, hide_index=True)
+                    
                     # IPVA
                     if pendencias.get('ipva'):
                         st.markdown("#### 🚗 IPVA")
@@ -336,8 +369,8 @@ def main() -> None:
                         df_icms = pd.DataFrame(pendencias['icms_fronteira_antecipado'])
                         st.dataframe(df_icms, use_container_width=True)
                     
-                    # Débitos Fiscais
-                    if pendencias.get('debitos_fiscais_autuacoes'):
+                    # Débitos Fiscais (fallback - estrutura antiga)
+                    if pendencias.get('debitos_fiscais_autuacoes') and not debitos_fiscais:
                         st.markdown("#### 💸 Débitos Fiscais")
                         df_debitos = pd.DataFrame(pendencias['debitos_fiscais_autuacoes'])
                         st.dataframe(df_debitos, use_container_width=True)

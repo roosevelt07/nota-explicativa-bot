@@ -28,7 +28,7 @@ from reportlab.platypus import (
     PageBreak,
 )
 
-from src.utils import formatar_total_previdencia
+from src.utils import formatar_total_previdencia, safe_str, safe_str
 from reportlab.pdfgen import canvas as rl_canvas
 
 
@@ -263,12 +263,45 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
             val = _fmt_moeda(item.get('valor_estimado', 0))
             linhas_finais.append([desc, ref, val])
 
-        # Autuações
+        # Autuações (estrutura antiga)
         for item in pendencias.get("debitos_fiscais_autuacoes", []):
             desc = f"Autuação {item.get('natureza_debito', '')} - Proc: {item.get('numero_processo','')}"
             ref = "Exigível"
             val = _fmt_moeda(item.get('valor_consolidado', 0))
             linhas_finais.append([desc, ref, val])
+        
+        # DÉBITOS FISCAIS (estrutura padronizada - quando IRREGULAR)
+        dados_processados = sefaz.get('dados_processados', {})
+        if dados_processados:
+            detalhes = dados_processados.get('detalhes', {})
+            debitos_fiscais = detalhes.get('debitos_fiscais', {}).get('itens', [])
+            
+            if debitos_fiscais:
+                # Adiciona tabela específica de Débitos Fiscais
+                story.append(Spacer(1, 6))
+                story.append(Paragraph("<b>Débitos Fiscais</b>", normal))
+                tabela_debitos = [["Processo", "Situação", "Saldo (R$)"]]
+                for item in debitos_fiscais:
+                    processo = safe_str(item.get('processo', ''))
+                    situacao = safe_str(item.get('situacao', ''))
+                    saldo = float(item.get('saldo', 0.0))
+                    tabela_debitos.append([processo, situacao, _fmt_moeda(saldo)])
+                
+                story.append(_make_table(tabela_debitos, col_widths=[200, 100, 100], data_align="CENTER"))
+            
+            # FRONTEIRAS (estrutura padronizada - quando IRREGULAR)
+            fronteiras = detalhes.get('fronteira', {}).get('itens', [])
+            if fronteiras:
+                story.append(Spacer(1, 6))
+                story.append(Paragraph("<b>Fronteiras</b>", normal))
+                tabela_fronteiras = [["Num. DAE", "Dt. venc.", "Valor Original (R$)"]]
+                for item in fronteiras:
+                    dae = safe_str(item.get('dae', ''))
+                    vencimento = safe_str(item.get('vencimento', ''))
+                    valor = float(item.get('valor_original', 0.0))
+                    tabela_fronteiras.append([dae, vencimento, _fmt_moeda(valor)])
+                
+                story.append(_make_table(tabela_fronteiras, col_widths=[120, 100, 120], data_align="CENTER"))
 
     # Renderiza Tabela ou Mensagem "Sem Débitos"
     if linhas_finais:

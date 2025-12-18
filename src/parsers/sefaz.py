@@ -20,6 +20,7 @@ import pdfplumber
 from src.parsers.base import ResultadoParsers
 from src.utils import converter_valor_br_para_float, safe_str, normalize_text
 import logging
+from typing import List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,147 @@ def _extrair_valor_de_celula(celula: str) -> float:
     return 0.0
 
 
+def _extrair_debitos_fiscais(texto: str) -> List[Dict[str, Any]]:
+    """
+    Extrai bloco DÉBITOS FISCAIS do texto do PDF.
+    Retorna lista de dicts com processo, situacao, saldo.
+    """
+    debitos = []
+    
+    # Normaliza texto: colapsa espaços múltiplos, preserva quebras de linha
+    texto_normalizado = normalize_text(texto)
+    linhas = texto_normalizado.split('\n')
+    
+    # Encontra início do bloco DÉBITOS FISCAIS
+    inicio_bloco = None
+    for i, linha in enumerate(linhas):
+        if re.search(r'DÉBITOS\s+FISCAIS|DEBITOS\s+FISCAIS', linha, re.IGNORECASE):
+            inicio_bloco = i
+            break
+    
+    if inicio_bloco is None:
+        return debitos
+    
+    # Encontra fim do bloco (próxima seção ou fim)
+    fim_bloco = len(linhas)
+    marcadores_fim = ['FRONTEIRAS', 'FRONTEIRA', 'IPVA', 'CONCLUSÃO', 'OBSERVAÇÃO']
+    for i in range(inicio_bloco + 1, len(linhas)):
+        linha_upper = linhas[i].upper()
+        if any(marcador in linha_upper for marcador in marcadores_fim):
+            fim_bloco = i
+            break
+    
+    # Extrai linhas do bloco
+    linhas_bloco = linhas[inicio_bloco:fim_bloco]
+    
+    # Padrões regex para parsear linhas (mais flexível)
+    # Exemplo: 2024.000010816644-80 ATIVO 36.491,20
+    # Também aceita: 2024.000010816644-80 ATIVO 36.491,20 ou 2024000010816644-80 ATIVO 36.491,20
+    padrao_linha = re.compile(
+        r'(?P<processo>\d{4}[\.-]?\d{8,}-?\d{2,})'  # Processo: 2024.000010816644-80 ou variações
+        r'\s+'
+        r'(?P<situacao>[A-ZÁÉÍÓÚÇ\s]{2,20}?)'  # Situação: ATIVO, SUSPENSO, etc. (2-20 chars)
+        r'\s+'
+        r'(?P<saldo>[\d\.]+,\d{2})'  # Saldo: 36.491,20
+    )
+    
+    for linha in linhas_bloco:
+        linha_limpa = _limpa(linha)
+        
+        # Ignora cabeçalhos
+        if any(termo in linha_limpa.upper() for termo in ['PROCESSO', 'SITUAÇÃO', 'SITUACAO', 'SALDO', 'VALOR']):
+            continue
+        
+        # Tenta fazer match
+        match = padrao_linha.search(linha_limpa)
+        if match:
+            processo = safe_str(match.group('processo')).strip()
+            situacao = safe_str(match.group('situacao')).strip()
+            saldo_str = safe_str(match.group('saldo')).strip()
+            
+            # Converte saldo pt-BR para float
+            saldo = converter_valor_br_para_float(saldo_str) if saldo_str else 0.0
+            
+            if processo or saldo > 0:
+                debitos.append({
+                    "processo": processo,
+                    "situacao": situacao,
+                    "saldo": saldo
+                })
+    
+    return debitos
+
+
+def _extrair_fronteiras(texto: str) -> List[Dict[str, Any]]:
+    """
+    Extrai bloco FRONTEIRAS do texto do PDF.
+    Retorna lista de dicts com dae, vencimento, valor_original.
+    """
+    fronteiras = []
+    
+    # Normaliza texto
+    texto_normalizado = normalize_text(texto)
+    linhas = texto_normalizado.split('\n')
+    
+    # Encontra início do bloco FRONTEIRAS
+    inicio_bloco = None
+    for i, linha in enumerate(linhas):
+        if re.search(r'FRONTEIRAS|FRONTEIRA', linha, re.IGNORECASE):
+            inicio_bloco = i
+            break
+    
+    if inicio_bloco is None:
+        return fronteiras
+    
+    # Encontra fim do bloco
+    fim_bloco = len(linhas)
+    marcadores_fim = ['DÉBITOS FISCAIS', 'DEBITOS FISCAIS', 'IPVA', 'CONCLUSÃO']
+    for i in range(inicio_bloco + 1, len(linhas)):
+        linha_upper = linhas[i].upper()
+        if any(marcador in linha_upper for marcador in marcadores_fim):
+            fim_bloco = i
+            break
+    
+    # Extrai linhas do bloco
+    linhas_bloco = linhas[inicio_bloco:fim_bloco]
+    
+    # Padrão regex para parsear linhas
+    # Exemplo: 9693489 28/01/2025 899,93
+    padrao_linha = re.compile(
+        r'(?P<dae>\d{6,})'  # Num. DAE: 9693489
+        r'\s+'
+        r'(?P<vencimento>\d{2}/\d{2}/\d{4})'  # Data: 28/01/2025
+        r'\s+'
+        r'(?P<valor>[\d\.]+,\d{2})'  # Valor: 899,93
+    )
+    
+    for linha in linhas_bloco:
+        linha_limpa = _limpa(linha)
+        
+        # Ignora cabeçalhos
+        if any(termo in linha_limpa.upper() for termo in ['NUM', 'DAE', 'DT', 'VENC', 'VALOR', 'ORIGINAL']):
+            continue
+        
+        # Tenta fazer match
+        match = padrao_linha.search(linha_limpa)
+        if match:
+            dae = safe_str(match.group('dae')).strip()
+            vencimento = safe_str(match.group('vencimento')).strip()
+            valor_str = safe_str(match.group('valor')).strip()
+            
+            # Converte valor pt-BR para float
+            valor = converter_valor_br_para_float(valor_str) if valor_str else 0.0
+            
+            if dae or valor > 0:
+                fronteiras.append({
+                    "dae": dae,
+                    "vencimento": vencimento,
+                    "valor_original": valor
+                })
+    
+    return fronteiras
+
+
 # ==============================================================================
 # PROCESSAMENTO ESPECÍFICO
 # ==============================================================================
@@ -258,12 +400,28 @@ def processar_sefaz(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, Any
                     "situacao": "EM ABERTO"  # Default, pode ser ajustado se houver informação
                 })
     
-    # Fronteira - só se não for certidão e houver evidência
-    if tipo_doc == "extrato":
+    # EXTRAÇÃO ROBUSTA DE DÉBITOS FISCAIS E FRONTEIRAS (quando IRREGULAR)
+    if resultado['situacao'] == 'IRREGULAR':
+        # Extrai débitos fiscais do texto
+        debitos_fiscais = _extrair_debitos_fiscais(texto)
+        if debitos_fiscais:
+            resultado['detalhes']['debitos_fiscais']['tem'] = True
+            resultado['detalhes']['debitos_fiscais']['itens'] = debitos_fiscais
+            logger.debug(f"SEFAZ: Extraídos {len(debitos_fiscais)} débitos fiscais do texto")
+        
+        # Extrai fronteiras do texto
+        fronteiras = _extrair_fronteiras(texto)
+        if fronteiras:
+            resultado['detalhes']['fronteira']['tem_em_aberto'] = True
+            resultado['detalhes']['fronteira']['itens'] = fronteiras
+            logger.debug(f"SEFAZ: Extraídas {len(fronteiras)} fronteiras do texto")
+    
+    # Fallback: Fronteira - só se não for certidão e houver evidência (método antigo)
+    if tipo_doc == "extrato" and not resultado['detalhes']['fronteira']['itens']:
         # Procura explicitamente por "FRONTEIRA"
         if "FRONTEIRA" in texto.upper() or "ICMS ANTECIPADO" in texto.upper():
             padrao_fronteira = r'(FRONTEIRA|ICMS\s+ANTECIPADO).*?(?P<competencia>\d{2}/\d{4}).*?R\$?\s*(?P<valor>[\d\.]+,\d{2})'
-            matches_fronteira = re.finditer(padrao_fronteira, texto_normalizado, re.IGNORECASE)
+            matches_fronteira = re.finditer(texto_normalizado, re.IGNORECASE)
             
             for match in matches_fronteira:
                 competencia = match.group('competencia')
@@ -277,46 +435,47 @@ def processar_sefaz(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, Any
                         "valor": valor
                     })
     
-    # Débitos Fiscais - só se houver tabela/listagem
-    tem_tabela_debitos = False
-    for tabela in tabelas:
-        if not tabela:
-            continue
-        
-        primeira_linha = " ".join([_limpa(cell).upper() for cell in tabela[0] if cell])
-        if any(termo in primeira_linha for termo in ["DÉBITO", "DEBITO", "VALOR", "COMPETÊNCIA", "COMPETENCIA"]):
-            tem_tabela_debitos = True
+    # Fallback: Débitos Fiscais de tabelas (se não extraiu do texto)
+    if not resultado['detalhes']['debitos_fiscais']['itens']:
+        tem_tabela_debitos = False
+        for tabela in tabelas:
+            if not tabela:
+                continue
             
-            # Processa linhas da tabela
-            for i, linha in enumerate(tabela):
-                if i == 0:
-                    continue  # Pula cabeçalho
+            primeira_linha = " ".join([_limpa(cell).upper() for cell in tabela[0] if cell])
+            if any(termo in primeira_linha for termo in ["DÉBITO", "DEBITO", "VALOR", "COMPETÊNCIA", "COMPETENCIA"]):
+                tem_tabela_debitos = True
                 
-                linha_completa = " ".join([_limpa(cell) for cell in linha if cell])
-                
-                # Procura valores monetários
-                valor = None
-                for cell in linha:
-                    if cell:
-                        valor_cell = _extrair_valor_de_celula(cell)
-                        if valor_cell > 0:
-                            valor = valor_cell
-                            break
-                
-                # Procura competência
-                match_comp = re.search(r'(\d{2}/\d{4})', linha_completa)
-                competencia = match_comp.group(1) if match_comp else None
-                
-                # Procura descrição
-                descricao = linha_completa[:100] if linha_completa else None
-                
-                if valor or competencia or descricao:
-                    resultado['detalhes']['debitos_fiscais']['tem'] = True
-                    resultado['detalhes']['debitos_fiscais']['itens'].append({
-                        "descricao": descricao,
-                        "competencia": competencia,
-                        "valor": valor
-                    })
+                # Processa linhas da tabela
+                for i, linha in enumerate(tabela):
+                    if i == 0:
+                        continue  # Pula cabeçalho
+                    
+                    linha_completa = " ".join([_limpa(cell) for cell in linha if cell])
+                    
+                    # Procura valores monetários
+                    valor = None
+                    for cell in linha:
+                        if cell:
+                            valor_cell = _extrair_valor_de_celula(cell)
+                            if valor_cell > 0:
+                                valor = valor_cell
+                                break
+                    
+                    # Procura competência
+                    match_comp = re.search(r'(\d{2}/\d{4})', linha_completa)
+                    competencia = match_comp.group(1) if match_comp else None
+                    
+                    # Procura descrição
+                    descricao = linha_completa[:100] if linha_completa else None
+                    
+                    if valor or competencia or descricao:
+                        resultado['detalhes']['debitos_fiscais']['tem'] = True
+                        resultado['detalhes']['debitos_fiscais']['itens'].append({
+                            "processo": descricao or "",
+                            "situacao": "",
+                            "saldo": valor or 0.0
+                        })
     
     # Se não encontrou débitos, aplica regra "não há débitos"
     if not resultado['detalhes']['ipva'] and not resultado['detalhes']['fronteira']['itens'] and not resultado['detalhes']['debitos_fiscais']['itens']:
@@ -418,16 +577,19 @@ def interpretar_pdf_sefaz(
                     "valor_total": item.get('valor', 0.0)
                 })
         
-        # Débitos Fiscais
+        # Débitos Fiscais (estrutura padronizada)
         if detalhes.get('debitos_fiscais', {}).get('itens'):
-            for item in dados_processados['debitos_fiscais']['itens']:
+            for item in detalhes['debitos_fiscais']['itens']:
                 pendencias['debitos_fiscais_autuacoes'].append({
-                    "numero_processo": "",
-                    "natureza_debito": item.get('descricao', 'DÉBITO FISCAL'),
-                    "periodo": item.get('competencia'),
+                    "numero_processo": safe_str(item.get('processo', '')),
+                    "natureza_debito": safe_str(item.get('situacao', 'DÉBITO FISCAL')),
+                    "periodo": "",
                     "fase_processual": "Cobrança Administrativa",
-                    "valor_consolidado": item.get('valor', 0.0)
+                    "valor_consolidado": float(item.get('saldo', 0.0))
                 })
+        
+        # Armazena dados processados para acesso no app.py e PDF
+        resultado.sefaz_estadual['dados_processados'] = dados_processados
         
         # Cálculo de Totais
         resumo = resultado.sefaz_estadual['resumo_financeiro']
