@@ -389,6 +389,10 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     story.append(Spacer(1, 10))
 
     # ==================== DÉBITOS MUNICIPAIS =================
+    # Força os Débitos Municipais a começar na página 2 (após cabeçalho EIKON 20 anos)
+    story.append(PageBreak())
+    # Espaçamento extra para evitar sobreposição com cabeçalho/logo do template
+    story.append(Spacer(1, 40))
     story.append(Paragraph("DÉBITOS MUNICIPAIS", heading))
     
     # Débitos municipais
@@ -416,10 +420,7 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
     story.append(Spacer(1, 10))
 
     # ============================ FGTS ================================
-    # Força o FGTS a começar na página 2
-    story.append(PageBreak())
-    # Espaçamento extra para evitar sobreposição com cabeçalho/logo do template
-    story.append(Spacer(1, 40))
+    # FGTS continua na mesma página após Débitos Municipais (ou próxima se necessário)
     story.append(Paragraph("FGTS", heading))
     
     # Lógica Híbrida: Usa dados estruturados se disponíveis, senão usa texto bloco
