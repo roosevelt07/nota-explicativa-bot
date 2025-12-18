@@ -362,7 +362,6 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
         )
     else:
         # Verifica se o parser identificou explicitamente como Regular (resiliente a None)
-        from src.utils import safe_str
         status_geral = dados.get("sefaz_estadual", {}).get("cabecalho_documento", {}).get("situacao_geral", "")
         status_geral = safe_str(status_geral).strip()
         status_upper = status_geral.upper() if status_geral else ""
