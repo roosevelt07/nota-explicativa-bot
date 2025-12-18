@@ -17,7 +17,10 @@ from typing import Optional, Union, Dict, List, Any
 import pdfplumber
 
 from src.parsers.base import ResultadoParsers
-from src.utils import converter_valor_br_para_float
+from src.utils import converter_valor_br_para_float, safe_str, normalize_text
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
@@ -339,8 +342,10 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
             'detalhes': []
         },
         'simples_nacional': {
+            'tem_debito_em_aberto': False,
             'tem_pendencias': False,
             'debitos': [],
+            'motivos': [],
             'parcelamento': {
                 'tem_parcelamento': False,
                 'tipo': None,
@@ -478,21 +483,73 @@ def processar_receita(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, A
         resultado['contribuicoes']['terceiros_total']
     )
     
-    # Simples Nacional - Parcelamento
+    # Simples Nacional - Parcelamento (incluindo SIEFPAR)
     texto_lower = texto.lower()
-    if any(termo in texto_lower for termo in [
+    texto_normalizado = normalize_text(texto)
+    
+    # Detecta SIEFPAR (Pendência - Parcelamento (SIEFPAR))
+    tem_siefpar = re.search(r'Pend[êe]ncia\s*[-–]\s*Parcelamento\s*\(?\s*SIEFPAR\s*\)?', texto, re.IGNORECASE)
+    tem_parcelamento = any(termo in texto_lower for termo in [
         "parcsn", "parcmei", "simples nacional - em parcelamento",
-        "pendência - parcelamento", "pendencia - parcelamento"
-    ]):
+        "pendência - parcelamento", "pendencia - parcelamento", "siefpar"
+    ]) or tem_siefpar
+    
+    if tem_parcelamento:
         resultado['simples_nacional']['parcelamento']['tem_parcelamento'] = True
         
-        # Extrai parcelas em atraso
-        match_atraso = re.search(r'parcelas\s+em\s+atraso.*?(\d+)', texto, re.IGNORECASE)
-        if match_atraso:
-            resultado['simples_nacional']['parcelamento']['parcelas_atraso'] = int(match_atraso.group(1))
+        # Extrai parcelas em atraso (regex robusta)
+        padroes_atraso = [
+            r'Parcelas\s+em\s+Atraso[:\s]+(\d+)',
+            r'parcelas\s+em\s+atraso[:\s]+(\d+)',
+            r'Parcelas.*?Atraso[:\s]+(\d+)',
+            r'atraso[:\s]+(\d+)\s+parcela'
+        ]
+        
+        parcelas_atraso = None
+        for padrao in padroes_atraso:
+            match = re.search(padrao, texto, re.IGNORECASE)
+            if match:
+                try:
+                    parcelas_atraso = int(match.group(1))
+                    resultado['simples_nacional']['parcelamento']['parcelas_atraso'] = parcelas_atraso
+                    logger.debug(f"Receita/PGFN: Detectado {parcelas_atraso} parcelas em atraso")
+                    break
+                except (ValueError, AttributeError):
+                    continue
+        
+        # Extrai valor em atraso (regex robusta para formato pt-BR)
+        padroes_valor = [
+            r'Valor\s+em\s+Atraso[:\s]+R?\$?\s*([\d\.]+,\d{2})',
+            r'valor\s+em\s+atraso[:\s]+R?\$?\s*([\d\.]+,\d{2})',
+            r'Valor.*?Atraso[:\s]+R?\$?\s*([\d\.]+,\d{2})',
+            r'atraso[:\s]+R?\$?\s*([\d\.]+,\d{2})'
+        ]
+        
+        valor_atraso = None
+        for padrao in padroes_valor:
+            match = re.search(padrao, texto, re.IGNORECASE)
+            if match:
+                try:
+                    valor_str = match.group(1)
+                    valor_atraso = converter_valor_br_para_float(valor_str)
+                    if valor_atraso > 0:
+                        resultado['simples_nacional']['parcelamento']['valor_atraso'] = valor_atraso
+                        logger.debug(f"Receita/PGFN: Detectado valor em atraso: R$ {valor_atraso:.2f}")
+                        break
+                except (ValueError, AttributeError):
+                    continue
+        
+        # Se parcelas_em_atraso > 0 ou valor_em_atraso > 0, marca como IRREGULAR
+        if (parcelas_atraso and parcelas_atraso > 0) or (valor_atraso and valor_atraso > 0):
+            resultado['simples_nacional']['tem_debito_em_aberto'] = True
+            resultado['simples_nacional']['motivos'] = resultado['simples_nacional'].get('motivos', [])
+            resultado['simples_nacional']['motivos'].append("Parcelamento em atraso")
+            logger.debug("Receita/PGFN: Situação marcada como IRREGULAR devido a parcelas/valor em atraso")
         
         # Identifica tipo
-        if "parcsn" in texto_lower:
+        if "siefpar" in texto_lower:
+            resultado['simples_nacional']['parcelamento']['tipo'] = "SIEFPAR"
+        elif "parcsn" in texto_lower:
             resultado['simples_nacional']['parcelamento']['tipo'] = "PARCSN"
         elif "parcmei" in texto_lower:
             resultado['simples_nacional']['parcelamento']['tipo'] = "PARCMEI"

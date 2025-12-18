@@ -18,7 +18,10 @@ from typing import Optional, Union, List, Dict, Any
 import pdfplumber
 
 from src.parsers.base import ResultadoParsers
-from src.utils import converter_valor_br_para_float
+from src.utils import converter_valor_br_para_float, safe_str, normalize_text
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
@@ -163,43 +166,77 @@ def _extrair_valor_de_celula(celula: str) -> float:
 def processar_sefaz(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, Any]:
     """
     Processa o texto e tabelas do PDF da SEFAZ.
-    Retorna estrutura conforme schema unificado.
+    Retorna estrutura padronizada com situacao, motivos, detalhes.
     """
     resultado = {
         'tipo_documento': 'extrato',  # certidao ou extrato
-        'situacao': None,
-        'ipva': [],
-        'fronteira': {
-            'tem_em_aberto': False,
-            'itens': []
-        },
-        'debitos_fiscais': {
-            'tem': False,
-            'itens': []
+        'situacao': 'INDETERMINADO',  # REGULAR, IRREGULAR, ou INDETERMINADO
+        'motivos': [],
+        'detalhes': {
+            'ipva': [],
+            'fronteira': {
+                'tem_em_aberto': False,
+                'itens': []
+            },
+            'debitos_fiscais': {
+                'tem': False,
+                'itens': []
+            }
         },
         'observacao': None
     }
+    
+    # Normaliza texto para análise
+    texto_normalizado = normalize_text(texto)
+    texto_upper = texto_normalizado.upper()
+    texto_lower = texto_normalizado.lower()
     
     # Identifica tipo de documento
     tipo_doc = _identificar_tipo_documento(texto, tabelas)
     resultado['tipo_documento'] = tipo_doc
     
-    # Se for certidão e regular
-    if tipo_doc == "certidao":
-        texto_lower = texto.lower()
-        if "situação regular" in texto_lower or "situacao regular" in texto_lower or "nada consta" in texto_lower:
-            resultado['situacao'] = "REGULAR"
-            resultado['observacao'] = "Documento é certidão; não contém detalhamento de IPVA/fronteira/débitos fiscais."
-            return resultado
+    # DETECÇÃO ROBUSTA DE SITUAÇÃO
+    # Prioridade: IRREGULARIDADES > REGULARIDADE > INDETERMINADO
     
-    # Identifica situação
-    texto_lower = texto.lower()
-    if "situação regular" in texto_lower or "situacao regular" in texto_lower or "nada consta" in texto_lower:
-        resultado['situacao'] = "REGULAR"
-    elif "em atraso" in texto_lower or "atraso" in texto_lower:
-        resultado['situacao'] = "EM ATRASO"
-    elif any(termo in texto_lower for termo in ["consta débito", "consta debito", "débitos pendentes"]):
-        resultado['situacao'] = "IRREGULAR"
+    # Verifica IRREGULARIDADES primeiro
+    termos_irregular = [
+        'irregularidades', 'irregularidade', 'irregular',
+        'débitos pendentes', 'debitos pendentes', 'débito pendente', 'debito pendente',
+        'consta débito', 'consta debito', 'há débito', 'ha debito',
+        'em atraso', 'atraso', 'pendências', 'pendencias'
+    ]
+    
+    tem_irregular = any(termo in texto_lower for termo in termos_irregular)
+    
+    if tem_irregular:
+        resultado['situacao'] = 'IRREGULAR'
+        resultado['motivos'].append('Documento contém irregularidades ou débitos pendentes')
+        logger.debug("SEFAZ: Situação detectada como IRREGULAR (termos encontrados)")
+    else:
+        # Verifica REGULARIDADE
+        termos_regular = [
+            'situação regular', 'situacao regular', 'regularidade',
+            'nada consta', 'sem pendências', 'sem pendencias',
+            'certidão negativa', 'certidao negativa'
+        ]
+        
+        tem_regular = any(termo in texto_lower for termo in termos_regular)
+        
+        if tem_regular and tipo_doc == "certidao":
+            resultado['situacao'] = 'REGULAR'
+            resultado['motivos'].append('Certidão de regularidade fiscal emitida')
+            resultado['observacao'] = "Documento é certidão; não contém detalhamento de IPVA/fronteira/débitos fiscais."
+            logger.debug("SEFAZ: Situação detectada como REGULAR (certidão)")
+            return resultado
+        elif tem_regular:
+            resultado['situacao'] = 'REGULAR'
+            resultado['motivos'].append('Documento indica situação regular')
+            logger.debug("SEFAZ: Situação detectada como REGULAR")
+        else:
+            # Não conseguiu detectar
+            resultado['situacao'] = 'INDETERMINADO'
+            resultado['motivos'].append('Texto não corresponde ao padrão esperado')
+            logger.debug(f"SEFAZ: Situação INDETERMINADO (texto com {len(texto)} caracteres)")
     
     # IPVA - só extrai se houver evidência textual
     texto_normalizado = re.sub(r'\s+', ' ', texto)
@@ -215,7 +252,7 @@ def processar_sefaz(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, Any
             valor = converter_valor_br_para_float(valor_str) if valor_str else None
             
             if valor:
-                resultado['ipva'].append({
+                resultado['detalhes']['ipva'].append({
                     "ano": int(ano) if ano.isdigit() else None,
                     "valor": valor,
                     "situacao": "EM ABERTO"  # Default, pode ser ajustado se houver informação
@@ -234,8 +271,8 @@ def processar_sefaz(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, Any
                 valor = converter_valor_br_para_float(valor_str) if valor_str else None
                 
                 if valor:
-                    resultado['fronteira']['tem_em_aberto'] = True
-                    resultado['fronteira']['itens'].append({
+                    resultado['detalhes']['fronteira']['tem_em_aberto'] = True
+                    resultado['detalhes']['fronteira']['itens'].append({
                         "competencia": competencia,
                         "valor": valor
                     })
@@ -274,15 +311,15 @@ def processar_sefaz(texto: str, tabelas: List[List[List[str]]]) -> Dict[str, Any
                 descricao = linha_completa[:100] if linha_completa else None
                 
                 if valor or competencia or descricao:
-                    resultado['debitos_fiscais']['tem'] = True
-                    resultado['debitos_fiscais']['itens'].append({
+                    resultado['detalhes']['debitos_fiscais']['tem'] = True
+                    resultado['detalhes']['debitos_fiscais']['itens'].append({
                         "descricao": descricao,
                         "competencia": competencia,
                         "valor": valor
                     })
     
     # Se não encontrou débitos, aplica regra "não há débitos"
-    if not resultado['ipva'] and not resultado['fronteira']['itens'] and not resultado['debitos_fiscais']['itens']:
+    if not resultado['detalhes']['ipva'] and not resultado['detalhes']['fronteira']['itens'] and not resultado['detalhes']['debitos_fiscais']['itens']:
         if not resultado['observacao']:
             resultado['observacao'] = "Não há débitos identificados no período analisado."
     
@@ -352,12 +389,15 @@ def interpretar_pdf_sefaz(
         # Processa dados estruturados
         dados_processados = processar_sefaz(texto_completo, tabelas)
         
-        # Situação
-        resultado.sefaz_estadual['cabecalho_documento']['situacao_geral'] = dados_processados['situacao']
+        # Situação padronizada (REGULAR/IRREGULAR/INDETERMINADO)
+        situacao = dados_processados.get('situacao', 'INDETERMINADO')
+        resultado.sefaz_estadual['cabecalho_documento']['situacao_geral'] = situacao
+        resultado.sefaz_estadual['cabecalho_documento']['motivos'] = dados_processados.get('motivos', [])
         
         # IPVA
         pendencias = resultado.sefaz_estadual['pendencias_identificadas']
-        for item in dados_processados['ipva']:
+        detalhes = dados_processados.get('detalhes', {})
+        for item in detalhes.get('ipva', []):
             pendencias['ipva'].append({
                 "exercicio": str(item['ano']) if item.get('ano') else "",
                 "placa": "",
@@ -368,8 +408,8 @@ def interpretar_pdf_sefaz(
             })
         
         # Fronteira
-        if dados_processados['fronteira']['itens']:
-            for item in dados_processados['fronteira']['itens']:
+        if detalhes.get('fronteira', {}).get('itens'):
+            for item in detalhes['fronteira']['itens']:
                 pendencias['icms_fronteira_antecipado'].append({
                     "periodo_referencia": item.get('competencia'),
                     "codigo_receita": "",
@@ -379,7 +419,7 @@ def interpretar_pdf_sefaz(
                 })
         
         # Débitos Fiscais
-        if dados_processados['debitos_fiscais']['itens']:
+        if detalhes.get('debitos_fiscais', {}).get('itens'):
             for item in dados_processados['debitos_fiscais']['itens']:
                 pendencias['debitos_fiscais_autuacoes'].append({
                     "numero_processo": "",

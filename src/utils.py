@@ -4,7 +4,38 @@ Utilitários compartilhados para conversão de valores e formatação.
 """
 
 import re
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+def safe_str(x: any) -> str:
+    """
+    Converte qualquer valor para string de forma segura.
+    Retorna string vazia se None.
+    """
+    if x is None:
+        return ""
+    try:
+        return str(x)
+    except (ValueError, TypeError):
+        return ""
+
+
+def normalize_text(s: str) -> str:
+    """
+    Normaliza texto: colapsa espaços, remove quebras excessivas, converte para maiúsculas.
+    """
+    if not s:
+        return ""
+    # Remove quebras de linha excessivas
+    texto = re.sub(r'\n{3,}', '\n\n', str(s))
+    # Colapsa espaços múltiplos
+    texto = re.sub(r' +', ' ', texto)
+    # Remove espaços no início/fim
+    texto = texto.strip()
+    return texto
 
 
 def converter_valor_br_para_float(valor_str: str) -> float:

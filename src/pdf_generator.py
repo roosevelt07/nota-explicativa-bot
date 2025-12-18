@@ -281,10 +281,18 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
             )
         )
     else:
-        # Verifica se o parser identificou explicitamente como Regular
+        # Verifica se o parser identificou explicitamente como Regular (resiliente a None)
+        from src.utils import safe_str
         status_geral = dados.get("sefaz_estadual", {}).get("cabecalho_documento", {}).get("situacao_geral", "")
-        if "REGULAR" in status_geral.upper():
+        status_geral = safe_str(status_geral).strip()
+        status_upper = status_geral.upper() if status_geral else ""
+        
+        if status_upper == "REGULAR":
             story.append(Paragraph("✅ Situação REGULAR (Certidão Negativa Emitida).", normal))
+        elif status_upper == "IRREGULAR":
+            story.append(Paragraph("⚠️ Situação IRREGULAR - Há débitos pendentes.", normal))
+        elif status_upper == "INDETERMINADO":
+            story.append(Paragraph("ℹ️ Situação não pôde ser determinada automaticamente.", normal))
         else:
             story.append(Paragraph("Sem débitos informados ou identificados.", normal))
     
