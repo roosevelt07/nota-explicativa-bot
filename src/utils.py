@@ -79,6 +79,34 @@ def converter_valor_br_para_float(valor_str: str) -> float:
         return 0.0
 
 
+def to_float_ptbr(value: any) -> float:
+    """
+    Converte valor para float de forma segura, tratando formato pt-BR.
+    
+    Args:
+        value: Valor a converter (str, float, int, None)
+        
+    Returns:
+        float: Valor convertido ou 0.0 se inválido
+    """
+    if value is None:
+        return 0.0
+    
+    # Se já é float ou int, retorna direto
+    if isinstance(value, (float, int)):
+        return float(value)
+    
+    # Se é string, tenta converter usando converter_valor_br_para_float
+    if isinstance(value, str):
+        return converter_valor_br_para_float(value)
+    
+    # Para outros tipos, tenta converter para string primeiro
+    try:
+        return converter_valor_br_para_float(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+
+
 def formatar_moeda_br(valor: float) -> str:
     """
     Formata float para string monetária brasileira (R$ X.XXX,XX).

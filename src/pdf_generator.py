@@ -28,8 +28,11 @@ from reportlab.platypus import (
     PageBreak,
 )
 
-from src.utils import formatar_total_previdencia, safe_str, safe_str
+from src.utils import formatar_total_previdencia, safe_str, converter_valor_br_para_float, to_float_ptbr
 from reportlab.pdfgen import canvas as rl_canvas
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
@@ -128,6 +131,30 @@ def _make_table(data, col_widths=None, header_align="CENTER", data_align="CENTER
 
 
 def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
+    """
+    Gera PDF a partir de dados estruturados.
+    Garante estrutura mínima de dados antes de processar.
+    """
+    # Garantia mínima de contrato de dados (requisito 5)
+    dados = dict(dados)  # Cria cópia para não modificar original
+    dados.setdefault("sefaz_estadual", {})
+    dados["sefaz_estadual"].setdefault("cabecalho_documento", {})
+    dados["sefaz_estadual"].setdefault("pendencias_identificadas", {})
+    dados["sefaz_estadual"].setdefault("dados_processados", {})
+    dados["sefaz_estadual"]["dados_processados"].setdefault("detalhes", {})
+    dados["sefaz_estadual"]["dados_processados"]["detalhes"].setdefault("debitos_fiscais", {})
+    dados["sefaz_estadual"]["dados_processados"]["detalhes"].setdefault("fronteira", {})
+    dados["sefaz_estadual"]["dados_processados"]["detalhes"]["debitos_fiscais"].setdefault("itens", [])
+    dados["sefaz_estadual"]["dados_processados"]["detalhes"]["fronteira"].setdefault("itens", [])
+    
+    # Status geral nunca pode ser None (requisito 4)
+    status_geral = dados.get("sefaz_estadual", {}).get("cabecalho_documento", {}).get("situacao_geral")
+    status_geral = safe_str(status_geral).strip()
+    if not status_geral:
+        status_geral = "INDETERMINADO"
+    dados["sefaz_estadual"]["cabecalho_documento"]["situacao_geral"] = status_geral
+    
+    logger.debug("PDF: Iniciando geração com status_geral=%s", status_geral)
     buffer = io.BytesIO()
     
     # Caminho para o template
@@ -271,37 +298,57 @@ def gerar_pdf_bytes(dados: Dict[str, Any]) -> bytes:
             linhas_finais.append([desc, ref, val])
         
         # DÉBITOS FISCAIS (estrutura padronizada - quando IRREGULAR)
-        dados_processados = sefaz.get('dados_processados', {})
-        if dados_processados:
-            detalhes = dados_processados.get('detalhes', {})
-            debitos_fiscais = detalhes.get('debitos_fiscais', {}).get('itens', [])
-            
-            if debitos_fiscais:
+        dados_processados = sefaz.get('dados_processados', {}) or {}
+        detalhes = dados_processados.get('detalhes', {}) or {}
+        debitos_fiscais = detalhes.get('debitos_fiscais', {}) or {}
+        debitos_fiscais_list = debitos_fiscais.get('itens', []) or []
+        
+        logger.debug("PDF: debitos_fiscais=%d", len(debitos_fiscais_list))
+        
+        if debitos_fiscais_list:
+            try:
                 # Adiciona tabela específica de Débitos Fiscais
                 story.append(Spacer(1, 6))
                 story.append(Paragraph("<b>Débitos Fiscais</b>", normal))
                 tabela_debitos = [["Processo", "Situação", "Saldo (R$)"]]
-                for item in debitos_fiscais:
-                    processo = safe_str(item.get('processo', ''))
-                    situacao = safe_str(item.get('situacao', ''))
-                    saldo = float(item.get('saldo', 0.0))
+                
+                for item in debitos_fiscais_list:
+                    if not isinstance(item, dict):
+                        continue
+                    processo = safe_str(item.get('processo'))
+                    situacao = safe_str(item.get('situacao'))
+                    saldo = to_float_ptbr(item.get('saldo'))
                     tabela_debitos.append([processo, situacao, _fmt_moeda(saldo)])
                 
-                story.append(_make_table(tabela_debitos, col_widths=[200, 100, 100], data_align="CENTER"))
+                if len(tabela_debitos) > 1:  # Tem pelo menos cabeçalho + 1 linha
+                    story.append(_make_table(tabela_debitos, col_widths=[200, 100, 100], data_align="CENTER"))
+            except Exception as e:
+                logger.warning("Erro ao processar débitos fiscais no PDF: %s", str(e))
             
             # FRONTEIRAS (estrutura padronizada - quando IRREGULAR)
-            fronteiras = detalhes.get('fronteira', {}).get('itens', [])
-            if fronteiras:
-                story.append(Spacer(1, 6))
-                story.append(Paragraph("<b>Fronteiras</b>", normal))
-                tabela_fronteiras = [["Num. DAE", "Dt. venc.", "Valor Original (R$)"]]
-                for item in fronteiras:
-                    dae = safe_str(item.get('dae', ''))
-                    vencimento = safe_str(item.get('vencimento', ''))
-                    valor = float(item.get('valor_original', 0.0))
-                    tabela_fronteiras.append([dae, vencimento, _fmt_moeda(valor)])
-                
-                story.append(_make_table(tabela_fronteiras, col_widths=[120, 100, 120], data_align="CENTER"))
+            fronteira_dict = detalhes.get('fronteira', {}) or {}
+            fronteiras_list = fronteira_dict.get('itens', []) or []
+            
+            logger.debug("PDF: fronteiras=%d", len(fronteiras_list))
+            
+            if fronteiras_list:
+                try:
+                    story.append(Spacer(1, 6))
+                    story.append(Paragraph("<b>Fronteiras</b>", normal))
+                    tabela_fronteiras = [["Num. DAE", "Dt. venc.", "Valor Original (R$)"]]
+                    
+                    for item in fronteiras_list:
+                        if not isinstance(item, dict):
+                            continue
+                        dae = safe_str(item.get('dae'))
+                        vencimento = safe_str(item.get('vencimento'))
+                        valor = to_float_ptbr(item.get('valor_original'))
+                        tabela_fronteiras.append([dae, vencimento, _fmt_moeda(valor)])
+                    
+                    if len(tabela_fronteiras) > 1:  # Tem pelo menos cabeçalho + 1 linha
+                        story.append(_make_table(tabela_fronteiras, col_widths=[120, 100, 120], data_align="CENTER"))
+                except Exception as e:
+                    logger.warning("Erro ao processar fronteiras no PDF: %s", str(e))
 
     # Renderiza Tabela ou Mensagem "Sem Débitos"
     if linhas_finais:
